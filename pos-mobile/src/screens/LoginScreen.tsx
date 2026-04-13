@@ -19,13 +19,14 @@ export default function LoginScreen() {
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
+
   const login = useAuthStore((s) => s.login);
 
   const handleKey = (key: string) => {
     if (loading) return;
 
     if (key === "DEL") {
-      setPin((p) => p.slice(0, -1));
+      setPin((prev) => prev.slice(0, -1));
       return;
     }
 
@@ -41,15 +42,32 @@ export default function LoginScreen() {
 
   const handleSubmit = async (enteredPin: string) => {
     setLoading(true);
+
     try {
       const res = await api.post("/auth/login", { pin: enteredPin });
-      login(res.data.user, res.data.token);
-    } catch {
+
+      const mappedUser = {
+        id: res.data.user.id,
+        name: res.data.user.fullName,
+        role: res.data.user.role,
+        restaurantId: res.data.restaurantId,
+      };
+
+      login(mappedUser, res.data.token);
+    } catch (error: any) {
       Vibration.vibrate(300);
       setShake(true);
-      setTimeout(() => setShake(false), 500);
+
+      setTimeout(() => {
+        setShake(false);
+      }, 500);
+
       setPin("");
-      Alert.alert("Invalid PIN", "Please try again.");
+
+      const message =
+        error?.response?.data?.message || "Invalid PIN. Please try again.";
+
+      Alert.alert("Login Failed", message);
     } finally {
       setLoading(false);
     }
@@ -57,14 +75,12 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Logo */}
       <View style={styles.header}>
         <View style={styles.logoMark} />
         <Text style={styles.brand}>RESTRO POS</Text>
         <Text style={styles.subtitle}>Staff Login</Text>
       </View>
 
-      {/* PIN Dots */}
       <View style={styles.pinRow}>
         {Array.from({ length: PIN_LENGTH }).map((_, i) => (
           <View
@@ -77,9 +93,9 @@ export default function LoginScreen() {
           />
         ))}
       </View>
+
       <Text style={styles.hint}>Enter your 4-digit PIN</Text>
 
-      {/* Keypad */}
       <PinPad onKey={handleKey} disabled={loading} />
 
       {loading && (

@@ -14,10 +14,15 @@ export default function PinPad({ onKey, disabled }: PinPadProps) {
     <View style={styles.keypad}>
       {KEYS.map((key, idx) => {
         if (key === "") return <View key={idx} style={styles.keyEmpty} />;
+
         return (
           <TouchableOpacity
             key={idx}
-            style={[styles.key, key === "DEL" && styles.keyDel, disabled && styles.keyDisabled]}
+            style={[
+              styles.key,
+              key === "DEL" && styles.keyDel,
+              disabled && styles.keyDisabled,
+            ]}
             onPress={() => !disabled && onKey(key)}
             activeOpacity={0.7}
           >

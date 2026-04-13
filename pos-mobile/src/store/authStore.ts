@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import { setAuthToken } from "../services/api";
 
-interface User {
+export interface User {
   id: string;
   name: string;
-  role: "CASHIER" | "MANAGER" | "ADMIN";
+  role: "OWNER" | "MANAGER" | "CASHIER" | "KITCHEN";
   restaurantId: string;
 }
 
@@ -20,12 +20,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
   isAuthenticated: false,
+
   login: (user, token) => {
     setAuthToken(token);
-    set({ user, token, isAuthenticated: true });
+    set({
+      user,
+      token,
+      isAuthenticated: true,
+    });
   },
+
   logout: () => {
     setAuthToken(null);
-    set({ user: null, token: null, isAuthenticated: false });
+    set({
+      user: null,
+      token: null,
+      isAuthenticated: false,
+    });
   },
 }));

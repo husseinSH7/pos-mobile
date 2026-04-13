@@ -40,18 +40,24 @@ export default function MenuScreen({ navigation }: any) {
         api.get("/menu/categories"),
         api.get("/menu/products"),
       ]);
+
       setCategories(catRes.data);
       setProducts(prodRes.data);
+
       if (catRes.data.length > 0 && !selectedCategory) {
         setSelectedCategory(catRes.data[0].id);
       }
-    } catch {
-      Alert.alert("Error", "Failed to load menu. Check your connection.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        "Failed to load menu. Check your connection.";
+
+      Alert.alert("Error", message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedCategory]);
 
   useEffect(() => {
     fetchMenu();
@@ -68,6 +74,7 @@ export default function MenuScreen({ navigation }: any) {
 
   const handleAddToCart = (product: Product) => {
     if (!product.available) return;
+
     addItem({
       productId: product.id,
       name: product.name,
@@ -86,14 +93,12 @@ export default function MenuScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Bar */}
       <View style={styles.topBar}>
         <View>
           <Text style={styles.screenTitle}>Menu</Text>
-          <Text style={styles.screenSub}>
-            Welcome, {user?.name ?? "Staff"}
-          </Text>
+          <Text style={styles.screenSub}>Welcome, {user?.name ?? "Staff"}</Text>
         </View>
+
         <View style={styles.topRight}>
           <TouchableOpacity
             style={styles.orderBtn}
@@ -106,20 +111,19 @@ export default function MenuScreen({ navigation }: any) {
               </View>
             )}
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
             <Text style={styles.logoutText}>↩</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Categories */}
       <CategoryTabs
         categories={categories}
         selected={selectedCategory}
         onSelect={setSelectedCategory}
       />
 
-      {/* Products Grid */}
       <FlatList
         data={filteredProducts}
         keyExtractor={(item) => item.id}
@@ -150,7 +154,6 @@ export default function MenuScreen({ navigation }: any) {
         }
       />
 
-      {/* Sticky Cart Bar */}
       {totalCount > 0 && (
         <TouchableOpacity
           style={styles.stickyCart}
