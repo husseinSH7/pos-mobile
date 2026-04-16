@@ -1,75 +1,74 @@
 import { create } from "zustand";
 
-export interface CartItem {
+export type CartItem = {
   productId: string;
   name: string;
   price: number;
   quantity: number;
-  modifiers?: { id: string; name: string; price: number }[];
-  note?: string;
-}
+  notes?: string;
+};
 
-interface CartState {
+type CartStore = {
   items: CartItem[];
-  tableNumber?: string;
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  setTableNumber: (table: string) => void;
+  decreaseItem: (productId: string) => void;
   clearCart: () => void;
-  subtotal: () => number;
-  tax: () => number;
-  total: () => number;
-}
+  getSubtotal: () => number;
+};
 
-const TAX_RATE = 0.1; // 10% — adjust to your region
-
-export const useCartStore = create<CartState>((set, get) => ({
+export const useCartStore = create<CartStore>((set, get) => ({
   items: [],
-  tableNumber: undefined,
 
-  addItem: (item) => {
-    const existing = get().items.find((i) => i.productId === item.productId);
-    if (existing) {
-      set({
-        items: get().items.map((i) =>
-          i.productId === item.productId
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
-        ),
-      });
-    } else {
-      set({ items: [...get().items, { ...item, quantity: 1 }] });
-    }
-  },
+  addItem: (item) =>
+    set((state) => {
+      const existing = state.items.find(
+        (cartItem) => cartItem.productId === item.productId
+      );
+
+      if (existing) {
+        return {
+          items: state.items.map((cartItem) =>
+            cartItem.productId === item.productId
+              ? { ...cartItem, quantity: cartItem.quantity + 1 }
+              : cartItem
+          ),
+        };
+      }
+
+      return {
+        items: [...state.items, { ...item, quantity: 1 }],
+      };
+    }),
 
   removeItem: (productId) =>
-    set({ items: get().items.filter((i) => i.productId !== productId) }),
+    set((state) => ({
+      items: state.items.filter((item) => item.productId !== productId),
+    })),
 
-  updateQuantity: (productId, quantity) => {
-    if (quantity <= 0) {
-      get().removeItem(productId);
-      return;
-    }
-    set({
-      items: get().items.map((i) =>
-        i.productId === productId ? { ...i, quantity } : i
-      ),
-    });
-  },
+  decreaseItem: (productId) =>
+    set((state) => {
+      const existing = state.items.find((item) => item.productId === productId);
 
-  setTableNumber: (table) => set({ tableNumber: table }),
+      if (!existing) return state;
 
-  clearCart: () => set({ items: [], tableNumber: undefined }),
+      if (existing.quantity === 1) {
+        return {
+          items: state.items.filter((item) => item.productId !== productId),
+        };
+      }
 
-  subtotal: () =>
-    get().items.reduce((sum, item) => {
-      const modifierTotal =
-        item.modifiers?.reduce((m, mod) => m + mod.price, 0) ?? 0;
-      return sum + (item.price + modifierTotal) * item.quantity;
-    }, 0),
+      return {
+        items: state.items.map((item) =>
+          item.productId === productId
+            ? { ...item, quantity: item.quantity - 1 }
+            : item
+        ),
+      };
+    }),
 
-  tax: () => get().subtotal() * TAX_RATE,
+  clearCart: () => set({ items: [] }),
 
-  total: () => get().subtotal() + get().tax(),
+  getSubtotal: () =>
+    get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
 }));

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { COLORS } from "../utils/colors";
 import { formatCurrency } from "../utils/currency";
 import { Product } from "../utils/types";
@@ -7,33 +7,49 @@ import { Product } from "../utils/types";
 interface ProductCardProps {
   product: Product;
   quantityInCart: number;
-  onPress: (product: Product) => void;
+  onPress: (product: Product) => void | Promise<void>;
+  loading?: boolean;
 }
 
-export default function ProductCard({ product, quantityInCart, onPress }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  quantityInCart,
+  onPress,
+  loading = false,
+}: ProductCardProps) {
   return (
     <TouchableOpacity
-      style={[styles.card, !product.available && styles.cardUnavailable]}
+      style={[
+        styles.card,
+        (!product.available || loading) && styles.cardUnavailable,
+      ]}
       onPress={() => onPress(product)}
-      activeOpacity={product.available ? 0.75 : 1}
+      activeOpacity={product.available && !loading ? 0.75 : 1}
+      disabled={!product.available || loading}
     >
       <View style={styles.strip} />
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
+
         {product.description ? (
           <Text style={styles.desc} numberOfLines={2}>
             {product.description}
           </Text>
         ) : null}
+
         <View style={styles.footer}>
           <Text style={styles.price}>{formatCurrency(product.price)}</Text>
-          {quantityInCart > 0 && (
+
+          {loading ? (
+            <ActivityIndicator size="small" color={COLORS.accent} />
+          ) : quantityInCart > 0 ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{quantityInCart}</Text>
             </View>
-          )}
+          ) : null}
+
           {!product.available && (
             <Text style={styles.unavailable}>Unavailable</Text>
           )}

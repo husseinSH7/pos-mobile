@@ -10,12 +10,15 @@ import {
 } from "react-native";
 import CartItemRow from "../components/CartItemRow";
 import { useCartStore } from "../store/cartStore";
+import { useActiveOrderStore } from "../store/activeOrderStore";
 import { COLORS } from "../utils/colors";
 import { formatCurrency } from "../utils/currency";
 
 export default function CartScreen({ navigation }: any) {
   const { items, removeItem, updateQuantity, clearCart, subtotal, tax, total } =
     useCartStore();
+
+  const { tableName, orderNumber } = useActiveOrderStore();
 
   const handleClearCart = () => {
     Alert.alert("Clear Order", "Remove all items from this order?", [
@@ -25,7 +28,7 @@ export default function CartScreen({ navigation }: any) {
         style: "destructive",
         onPress: () => {
           clearCart();
-          navigation.navigate("Menu");
+          navigation.navigate("Order");
         },
       },
     ]);
@@ -33,12 +36,22 @@ export default function CartScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Review Order</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Review Order</Text>
+          {tableName && (
+            <Text style={styles.headerSub}>
+              {tableName}
+              {orderNumber != null ? ` · #${orderNumber}` : ""}
+            </Text>
+          )}
+        </View>
         {items.length > 0 && (
           <TouchableOpacity onPress={handleClearCart} style={styles.clearBtn}>
             <Text style={styles.clearText}>Clear</Text>
@@ -47,21 +60,19 @@ export default function CartScreen({ navigation }: any) {
       </View>
 
       {items.length === 0 ? (
-        /* Empty State */
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>🛒</Text>
-          <Text style={styles.emptyTitle}>Your order is empty</Text>
+          <Text style={styles.emptyTitle}>Order is empty</Text>
           <Text style={styles.emptySub}>Add items from the menu</Text>
           <TouchableOpacity
             style={styles.menuBtn}
-            onPress={() => navigation.navigate("Menu")}
+            onPress={() => navigation.navigate("Order")}
           >
-            <Text style={styles.menuBtnText}>Browse Menu</Text>
+            <Text style={styles.menuBtnText}>Back to Order</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <>
-          {/* Items List */}
           <FlatList
             data={items}
             keyExtractor={(item) => item.productId}
@@ -70,19 +81,24 @@ export default function CartScreen({ navigation }: any) {
             renderItem={({ item }) => (
               <CartItemRow
                 item={item}
-                onIncrease={() => updateQuantity(item.productId, item.quantity + 1)}
-                onDecrease={() => updateQuantity(item.productId, item.quantity - 1)}
+                onIncrease={() =>
+                  updateQuantity(item.productId, item.quantity + 1)
+                }
+                onDecrease={() =>
+                  updateQuantity(item.productId, item.quantity - 1)
+                }
                 onRemove={() => removeItem(item.productId)}
               />
             )}
           />
 
-          {/* Summary + Checkout */}
           <View style={styles.footer}>
             <View style={styles.summaryBox}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(subtotal())}</Text>
+                <Text style={styles.summaryValue}>
+                  {formatCurrency(subtotal())}
+                </Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Tax (10%)</Text>
@@ -97,7 +113,7 @@ export default function CartScreen({ navigation }: any) {
             <View style={styles.actions}>
               <TouchableOpacity
                 style={styles.addMoreBtn}
-                onPress={() => navigation.navigate("Menu")}
+                onPress={() => navigation.navigate("Order")}
                 activeOpacity={0.8}
               >
                 <Text style={styles.addMoreText}>+ Add Items</Text>
@@ -140,7 +156,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   backText: { fontSize: 20, color: COLORS.text },
-  title: { flex: 1, fontSize: 20, fontWeight: "800", color: COLORS.text },
+  headerCenter: { flex: 1 },
+  title: { fontSize: 20, fontWeight: "800", color: COLORS.text },
+  headerSub: { fontSize: 12, color: COLORS.muted, marginTop: 1 },
   clearBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -148,8 +166,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#3A1A1A",
   },
   clearText: { color: COLORS.error, fontWeight: "600", fontSize: 13 },
-
-  // Empty state
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -167,11 +183,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   menuBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-
-  // List
   list: { padding: 16, paddingBottom: 8 },
-
-  // Footer
   footer: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -201,8 +213,6 @@ const styles = StyleSheet.create({
   },
   totalLabel: { color: COLORS.text, fontSize: 17, fontWeight: "700" },
   totalValue: { color: COLORS.accent, fontSize: 20, fontWeight: "800" },
-
-  // Actions
   actions: { flexDirection: "row", gap: 10 },
   addMoreBtn: {
     flex: 1,

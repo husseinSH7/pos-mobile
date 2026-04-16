@@ -1,6 +1,12 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://10.216.12.133:4000";
+const API_BASE_URL = "http://192.168.7.3:4000";
+
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -10,10 +16,12 @@ export const api = axios.create({
   },
 });
 
-export const setAuthToken = (token: string | null) => {
-  if (token) {
-    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-  } else {
-    delete api.defaults.headers.common["Authorization"];
+api.interceptors.request.use((config) => {
+  if (authToken) {
+    config.headers.Authorization = `Bearer ${authToken}`;
+  } else if (config.headers?.Authorization) {
+    delete config.headers.Authorization;
   }
-};
+
+  return config;
+});

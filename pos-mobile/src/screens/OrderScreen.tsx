@@ -15,6 +15,8 @@ import ProductCard from "../components/ProductCard";
 import CartItemRow from "../components/CartItemRow";
 import { api } from "../services/api";
 import { useCartStore } from "../store/cartStore";
+import { useAuthStore } from "../store/authStore";
+import { useActiveOrderStore } from "../store/activeOrderStore";
 import { COLORS } from "../utils/colors";
 import { formatCurrency } from "../utils/currency";
 import { Category, Product } from "../utils/types";
@@ -25,11 +27,26 @@ export default function OrderScreen({ navigation }: any) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [addingProductId, setAddingProductId] = useState<string | null>(null);
 
-  const { items, addItem, removeItem, updateQuantity, clearCart, subtotal, tax, total } =
-    useCartStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  const items = useCartStore((s) => s.items);
+  const addItem = useCartStore((s) => s.addItem);
+  const removeItem = useCartStore((s) => s.removeItem);
+  const decreaseItem = useCartStore((s) => s.decreaseItem);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const getSubtotal = useCartStore((s) => s.getSubtotal);
+
+  const activeTableOrder = useActiveOrderStore((s) => s.activeTableOrder);
+
+  const tableName = activeTableOrder.tableName;
+  const orderNumber = activeTableOrder.orderNumber;
 
   const totalCount = items.reduce((sum, i) => sum + i.quantity, 0);
+  const subtotal = getSubtotal();
+  const tax = subtotal * 0.1;
+  const total = subtotal + tax;
 
   const fetchMenu = useCallback(async () => {
     try {
@@ -37,13 +54,17 @@ export default function OrderScreen({ navigation }: any) {
         api.get("/menu/categories"),
         api.get("/menu/products"),
       ]);
+
       setCategories(catRes.data);
       setProducts(prodRes.data);
-      if (catRes.data.length > 0 && !selectedCategory) {
-        setSelectedCategory(catRes.data[0].id);
+
+      if (catRes.data.length > 0) {
+        setSelectedCategory((prev) => prev ?? catRes.data[0].id);
       }
-    } catch {
-      Alert.alert("Error", "Failed to load menu.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message || "Failed to load menu.";
+      Alert.alert("Error", message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -51,18 +72,85 @@ export default function OrderScreen({ navigation }: any) {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchMenu();
-  }, [fetchMenu]);
+  }, [isAuthenticated, fetchMenu]);
+
+  const onRefresh = () => {
+    if (!isAuthenticated) return;
+    setRefreshing(true);
+    fetchMenu();
+  };
 
   const filteredProducts = selectedCategory
     ? products.filter((p) => p.categoryId === selectedCategory)
     : products;
+
+  const handleAddProduct = async (product: Product) => {
+    if (!product.available) return;
+
+    setAddingProductId(product.id);
+    try {
+      addItem({
+        productId: product.id,
+        name: product.name,
+        price: Number(product.price),
+      });
+    } catch (error: any) {
+      const message = error?.response?.data?.message || "Failed to add item.";
+      Alert.alert("Error", message);
+    } finally {
+      setAddingProductId(null);
+    }
+  };
 
   const handleClearCart = () => {
     Alert.alert("Clear Order", "Remove all items from this order?", [
       { text: "Cancel", style: "cancel" },
       { text: "Clear", style: "destructive", onPress: clearCart },
     ]);
+  };
+
+  const handleProceedToCheckout = async () => {
+    try {
+      if (!activeTableOrder.tableId) {
+        Alert.alert("Error", "No table selected.");
+        return;
+      }
+
+      if (!items.length) {
+        Alert.alert("Error", "Cart is empty.");
+        return;
+      }
+
+      const payload = {
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          notes: item.notes,
+        })),
+      };
+
+      const res = await api.post(
+        `/tables/${activeTableOrder.tableId}/checkout`,
+        payload
+      );
+
+      const order = res.data;
+
+      useActiveOrderStore.getState().setActiveTableOrder({
+        tableId: activeTableOrder.tableId,
+        tableName: activeTableOrder.tableName,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+      });
+
+      navigation.navigate("Cart");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message || "Failed to checkout order.";
+      Alert.alert("Error", message);
+    }
   };
 
   if (loading) {
@@ -75,12 +163,21 @@ export default function OrderScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Tables")}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>New Order</Text>
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>{tableName ?? "Order"}</Text>
+          {orderNumber != null && (
+            <Text style={styles.orderNum}>Order #{orderNumber}</Text>
+          )}
+        </View>
+
         {totalCount > 0 && (
           <TouchableOpacity onPress={handleClearCart} style={styles.clearBtn}>
             <Text style={styles.clearText}>Clear</Text>
@@ -89,13 +186,13 @@ export default function OrderScreen({ navigation }: any) {
       </View>
 
       <View style={styles.body}>
-        {/* Left: Menu */}
         <View style={styles.menuPanel}>
           <CategoryTabs
             categories={categories}
             selected={selectedCategory}
             onSelect={setSelectedCategory}
           />
+
           <FlatList
             data={filteredProducts}
             keyExtractor={(item) => item.id}
@@ -106,7 +203,7 @@ export default function OrderScreen({ navigation }: any) {
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
-                onRefresh={() => { setRefreshing(true); fetchMenu(); }}
+                onRefresh={onRefresh}
                 tintColor={COLORS.accent}
               />
             }
@@ -116,10 +213,8 @@ export default function OrderScreen({ navigation }: any) {
                 quantityInCart={
                   items.find((c) => c.productId === item.id)?.quantity ?? 0
                 }
-                onPress={(p) => {
-                  if (!p.available) return;
-                  addItem({ productId: p.id, name: p.name, price: p.price });
-                }}
+                onPress={handleAddProduct}
+                loading={addingProductId === item.id}
               />
             )}
             ListEmptyComponent={
@@ -128,7 +223,6 @@ export default function OrderScreen({ navigation }: any) {
           />
         </View>
 
-        {/* Right: Cart */}
         <View style={styles.cartPanel}>
           <Text style={styles.cartTitle}>Current Order</Text>
 
@@ -147,33 +241,47 @@ export default function OrderScreen({ navigation }: any) {
               renderItem={({ item }) => (
                 <CartItemRow
                   item={item}
-                  onIncrease={() => updateQuantity(item.productId, item.quantity + 1)}
-                  onDecrease={() => updateQuantity(item.productId, item.quantity - 1)}
+                  onIncrease={() =>
+                    addItem({
+                      productId: item.productId,
+                      name: item.name,
+                      price: item.price,
+                      notes: item.notes,
+                    })
+                  }
+                  onDecrease={() => decreaseItem(item.productId)}
                   onRemove={() => removeItem(item.productId)}
                 />
               )}
             />
           )}
 
-          {/* Order Summary */}
           {items.length > 0 && (
             <View style={styles.summary}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(subtotal())}</Text>
+                <Text style={styles.summaryValue}>
+                  {formatCurrency(subtotal)}
+                </Text>
               </View>
+
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Tax (10%)</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(tax())}</Text>
+                <Text style={styles.summaryValue}>
+                  {formatCurrency(tax)}
+                </Text>
               </View>
+
               <View style={[styles.summaryRow, styles.totalRow]}>
                 <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>{formatCurrency(total())}</Text>
+                <Text style={styles.totalValue}>
+                  {formatCurrency(total)}
+                </Text>
               </View>
 
               <TouchableOpacity
                 style={styles.checkoutBtn}
-                onPress={() => navigation.navigate("Cart")}
+                onPress={handleProceedToCheckout}
                 activeOpacity={0.85}
               >
                 <Text style={styles.checkoutBtnText}>
@@ -214,12 +322,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   backText: { fontSize: 20, color: COLORS.text },
-  title: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
+  headerCenter: { flex: 1 },
+  title: { fontSize: 20, fontWeight: "800", color: COLORS.text },
+  orderNum: { fontSize: 12, color: COLORS.muted, marginTop: 1 },
   clearBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -228,19 +333,11 @@ const styles = StyleSheet.create({
   },
   clearText: { color: COLORS.error, fontWeight: "600", fontSize: 13 },
   body: { flex: 1, flexDirection: "row" },
-
-  // Menu Panel (left 55%)
   menuPanel: { flex: 55, borderRightWidth: 1, borderRightColor: COLORS.border },
   row: { justifyContent: "space-between" },
   productList: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 20 },
   emptyText: { color: COLORS.muted, textAlign: "center", marginTop: 40 },
-
-  // Cart Panel (right 45%)
-  cartPanel: {
-    flex: 45,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-  },
+  cartPanel: { flex: 45, paddingHorizontal: 12, paddingTop: 12 },
   cartTitle: {
     fontSize: 16,
     fontWeight: "700",
@@ -256,8 +353,6 @@ const styles = StyleSheet.create({
   emptyCartIcon: { fontSize: 36 },
   emptyCartText: { color: COLORS.text, fontWeight: "600", fontSize: 15 },
   emptyCartSub: { color: COLORS.muted, fontSize: 12 },
-
-  // Summary
   summary: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,

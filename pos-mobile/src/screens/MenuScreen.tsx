@@ -29,8 +29,10 @@ export default function MenuScreen({ navigation }: any) {
   const addItem = useCartStore((s) => s.addItem);
   const cartItems = useCartStore((s) => s.items);
   const total = useCartStore((s) => s.total);
+
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const totalCount = cartItems.reduce((sum, i) => sum + i.quantity, 0);
 
@@ -44,8 +46,8 @@ export default function MenuScreen({ navigation }: any) {
       setCategories(catRes.data);
       setProducts(prodRes.data);
 
-      if (catRes.data.length > 0 && !selectedCategory) {
-        setSelectedCategory(catRes.data[0].id);
+      if (catRes.data.length > 0) {
+        setSelectedCategory((prev) => prev ?? catRes.data[0].id);
       }
     } catch (error: any) {
       const message =
@@ -57,13 +59,15 @@ export default function MenuScreen({ navigation }: any) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCategory]);
+  }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchMenu();
-  }, [fetchMenu]);
+  }, [isAuthenticated, fetchMenu]);
 
   const onRefresh = () => {
+    if (!isAuthenticated) return;
     setRefreshing(true);
     fetchMenu();
   };

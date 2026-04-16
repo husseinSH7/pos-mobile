@@ -23,6 +23,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: (user, token) => {
     setAuthToken(token);
+
     set({
       user,
       token,
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     setAuthToken(null);
+
     set({
       user: null,
       token: null,
