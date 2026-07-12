@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://192.168.7.3:4000";
+const API_BASE_URL = "http://192.168.7.6:4000";
 
 let authToken: string | null = null;
 

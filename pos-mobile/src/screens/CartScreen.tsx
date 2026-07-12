@@ -18,7 +18,7 @@ export default function CartScreen({ navigation }: any) {
   const { items, removeItem, updateQuantity, clearCart, subtotal, tax, total } =
     useCartStore();
 
-  const { tableName, orderNumber } = useActiveOrderStore();
+  const activeTableOrder = useActiveOrderStore((s) => s.activeTableOrder);
 
   const handleClearCart = () => {
     Alert.alert("Clear Order", "Remove all items from this order?", [
@@ -45,10 +45,12 @@ export default function CartScreen({ navigation }: any) {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>Review Order</Text>
-          {tableName && (
+          {activeTableOrder.tableName && (
             <Text style={styles.headerSub}>
-              {tableName}
-              {orderNumber != null ? ` · #${orderNumber}` : ""}
+              {activeTableOrder.tableName}
+              {activeTableOrder.orderNumber != null
+                ? ` - #${activeTableOrder.orderNumber}`
+                : ""}
             </Text>
           )}
         </View>
@@ -121,11 +123,11 @@ export default function CartScreen({ navigation }: any) {
 
               <TouchableOpacity
                 style={styles.checkoutBtn}
-                onPress={() => navigation.navigate("Payment")}
+                onPress={() => navigation.navigate("Kitchen")}
                 activeOpacity={0.85}
               >
                 <Text style={styles.checkoutBtnText}>
-                  Pay {formatCurrency(total())}
+                  Send {formatCurrency(total())}
                 </Text>
               </TouchableOpacity>
             </View>

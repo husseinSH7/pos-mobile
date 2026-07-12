@@ -6,6 +6,11 @@ export type CartItem = {
   price: number;
   quantity: number;
   notes?: string;
+  modifiers?: {
+    id: string;
+    name: string;
+    price: number;
+  }[];
 };
 
 type CartStore = {
@@ -13,8 +18,12 @@ type CartStore = {
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (productId: string) => void;
   decreaseItem: (productId: string) => void;
+  updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   getSubtotal: () => number;
+  subtotal: () => number;
+  tax: () => number;
+  total: () => number;
 };
 
 export const useCartStore = create<CartStore>((set, get) => ({
@@ -67,8 +76,29 @@ export const useCartStore = create<CartStore>((set, get) => ({
       };
     }),
 
+  updateQuantity: (productId, quantity) =>
+    set((state) => {
+      if (quantity <= 0) {
+        return {
+          items: state.items.filter((item) => item.productId !== productId),
+        };
+      }
+
+      return {
+        items: state.items.map((item) =>
+          item.productId === productId ? { ...item, quantity } : item
+        ),
+      };
+    }),
+
   clearCart: () => set({ items: [] }),
 
   getSubtotal: () =>
     get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+
+  subtotal: () => get().getSubtotal(),
+
+  tax: () => get().getSubtotal() * 0.1,
+
+  total: () => get().getSubtotal() * 1.1,
 }));
