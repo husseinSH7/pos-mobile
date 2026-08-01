@@ -11,6 +11,9 @@ import {
   View,
 } from "react-native";
 import { api } from "../services/api";
+import { useRealtimeStore } from "../store/realtimeStore";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorMessage from "../components/ErrorMessage";
 
 type Order = {
   id: string;
@@ -38,16 +41,18 @@ export default function OrdersScreen({ navigation }: any) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const recentOrders = useRealtimeStore((s) => s.recentOrders);
 
   const fetchOrders = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/orders");
       setOrders(res.data);
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "Failed to load orders."
-      );
+      const message = error?.response?.data?.message || "Failed to load orders.";
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,6 +62,30 @@ export default function OrdersScreen({ navigation }: any) {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  // Real-time order updates
+  useEffect(() => {
+    if (recentOrders.length === 0) return;
+
+    const latestOrder = recentOrders[0];
+    
+    setOrders((prevOrders) => {
+      const existingIndex = prevOrders.findIndex(o => o.id === latestOrder.orderId);
+      
+      if (existingIndex >= 0) {
+        // Update existing order
+        return prevOrders.map((order) =>
+          order.id === latestOrder.orderId
+            ? { ...order, status: latestOrder.status as "OPEN" | "PAID" | "VOIDED" | "COMPLETED" }
+            : order
+        );
+      } else {
+        // This is a new order, we need to fetch the full data
+        fetchOrders();
+        return prevOrders;
+      }
+    });
+  }, [recentOrders, fetchOrders]);
 
   const summary = useMemo(() => {
     return {
@@ -74,12 +103,11 @@ export default function OrdersScreen({ navigation }: any) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#F97316" />
-        <Text style={styles.loadingText}>Loading orders...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading orders..." />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={fetchOrders} />;
   }
 
   return (

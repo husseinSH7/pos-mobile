@@ -13,6 +13,8 @@ import {
   View,
 } from "react-native";
 import { api } from "../services/api";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorMessage from "../components/ErrorMessage";
 
 type Customer = {
   id: string;
@@ -29,6 +31,7 @@ export default function CustomersScreen({ navigation }: any) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -38,13 +41,12 @@ export default function CustomersScreen({ navigation }: any) {
 
   const fetchCustomers = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/customers");
       setCustomers(res.data);
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "Failed to load customers."
-      );
+      const message = error?.response?.data?.message || "Failed to load customers.";
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -82,19 +84,35 @@ export default function CustomersScreen({ navigation }: any) {
 
     setCreating(true);
 
+    // Optimistic update
+    const tempCustomer: Customer = {
+      id: `temp-${Date.now()}`,
+      fullName: fullName.trim(),
+      phone: phone.trim() || null,
+      email: email.trim() || null,
+      points: 0,
+      totalSpent: 0,
+      visitCount: 0,
+    };
+
+    setCustomers((prev) => [tempCustomer, ...prev]);
+    setModalVisible(false);
+    setFullName("");
+    setPhone("");
+    setEmail("");
+
     try {
       const res = await api.post("/customers", {
-        fullName: fullName.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
+        fullName: tempCustomer.fullName,
+        phone: tempCustomer.phone,
+        email: tempCustomer.email,
       });
 
-      setCustomers((prev) => [res.data, ...prev]);
-      setModalVisible(false);
-      setFullName("");
-      setPhone("");
-      setEmail("");
+      // Replace temp customer with real data
+      setCustomers((prev) => prev.map((c) => c.id === tempCustomer.id ? res.data : c));
     } catch (error: any) {
+      // Rollback on error
+      setCustomers((prev) => prev.filter((c) => c.id !== tempCustomer.id));
       Alert.alert(
         "Error",
         error?.response?.data?.message || "Failed to create customer."
@@ -105,12 +123,11 @@ export default function CustomersScreen({ navigation }: any) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#F97316" />
-        <Text style={styles.loadingText}>Loading customers...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading customers..." />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={fetchCustomers} />;
   }
 
   return (

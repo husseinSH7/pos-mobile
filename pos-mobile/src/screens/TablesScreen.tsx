@@ -16,7 +16,10 @@ import {
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import { useActiveOrderStore } from "../store/activeOrderStore";
+import { useRealtimeStore } from "../store/realtimeStore";
 import { COLORS } from "../utils/colors";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorMessage from "../components/ErrorMessage";
 
 interface TableArea {
   id: string;
@@ -41,6 +44,7 @@ export default function TablesScreen({ navigation }: any) {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [selectedArea, setSelectedArea] = useState<string>("All");
   const [loadingTableId, setLoadingTableId] = useState<string | null>(null);
@@ -54,6 +58,7 @@ export default function TablesScreen({ navigation }: any) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const setActiveTableOrder = useActiveOrderStore((s) => s.setActiveTableOrder);
+  const tableUpdates = useRealtimeStore((s) => s.tableUpdates);
 
   const getTableAreaName = (table: Table) => {
     return (
@@ -66,12 +71,13 @@ export default function TablesScreen({ navigation }: any) {
 
   const fetchTables = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/tables");
       setTables(res.data);
     } catch (error: any) {
       const message =
         error?.response?.data?.message || "Failed to load tables.";
-      Alert.alert("Error", message);
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -81,6 +87,25 @@ export default function TablesScreen({ navigation }: any) {
   useEffect(() => {
     fetchTables();
   }, [fetchTables]);
+
+  // Real-time table status updates
+  useEffect(() => {
+    if (tableUpdates.length === 0) return;
+
+    const latestUpdate = tableUpdates[0];
+    setTables((prevTables) =>
+      prevTables.map((table) =>
+        table.id === latestUpdate.tableId
+          ? {
+              ...table,
+              status: latestUpdate.status as "AVAILABLE" | "OCCUPIED" | "RESERVED" | "DISABLED",
+              hasOpenOrder: latestUpdate.status === "OCCUPIED",
+              openOrderId: latestUpdate.orderId || null,
+            }
+          : table
+      )
+    );
+  }, [tableUpdates]);
 
   const visibleTables = tables.filter((t) => t.isActive);
 
@@ -112,23 +137,38 @@ export default function TablesScreen({ navigation }: any) {
 
     setCreatingTable(true);
 
+    // Optimistic update
+    const tempTable: Table = {
+      id: `temp-${Date.now()}`,
+      name: newTableName.trim(),
+      seats: Number(newTableSeats) || 2,
+      area: newTableArea.trim() || "Main Hall",
+      areaName: newTableArea.trim() || "Main Hall",
+      isActive: true,
+      status: "AVAILABLE",
+      hasOpenOrder: false,
+      openOrderId: null,
+    };
+
+    setTables((prev) => [...prev, tempTable]);
+    setModalVisible(false);
+    setNewTableName("");
+    setNewTableSeats("4");
+    setNewTableArea("Main Hall");
+
     try {
       const res = await api.post("/tables", {
-        name: newTableName.trim(),
-        seats: Number(newTableSeats) || 2,
-        area: newTableArea.trim() || "Main Hall",
+        name: tempTable.name,
+        seats: tempTable.seats,
+        area: tempTable.area,
       });
 
-      setTables((prev) => [...prev, res.data]);
-      setModalVisible(false);
-      setNewTableName("");
-      setNewTableSeats("4");
-      setNewTableArea("Main Hall");
-
-      Alert.alert("Success", `Table ${res.data.name} created successfully.`);
+      // Replace temp table with real data
+      setTables((prev) => prev.map((t) => t.id === tempTable.id ? res.data : t));
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message || "Failed to create table.";
+      // Rollback on error
+      setTables((prev) => prev.filter((t) => t.id !== tempTable.id));
+      const message = error?.response?.data?.message || "Failed to create table.";
       Alert.alert("Error", message);
     } finally {
       setCreatingTable(false);
@@ -168,12 +208,11 @@ export default function TablesScreen({ navigation }: any) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
-        <Text style={styles.loadingText}>Loading tables...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading tables..." />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={fetchTables} />;
   }
 
   return (

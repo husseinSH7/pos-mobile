@@ -1,7 +1,20 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSyncStore } from "../store/syncStore";
+import SyncStatusIndicator from "../components/SyncStatusIndicator";
+import { initializeNetworkMonitoring } from "../services/network";
 
 export default function HomeScreen({ navigation }: any) {
+  const { loadSyncStatus } = useSyncStore();
+
+  useEffect(() => {
+    // Initialize network monitoring
+    initializeNetworkMonitoring();
+    
+    // Load initial sync status
+    loadSyncStatus();
+  }, [loadSyncStatus]);
+
   const modules = [
     {
       title: "Sales",
@@ -34,6 +47,12 @@ export default function HomeScreen({ navigation }: any) {
       screen: "Customers",
     },
     {
+      title: "Shift",
+      description: "Manage staff shifts",
+      icon: "SFT",
+      screen: "Shift",
+    },
+    {
       title: "Settings",
       description: "Restaurant and staff settings",
       icon: "SET",
@@ -42,10 +61,12 @@ export default function HomeScreen({ navigation }: any) {
   ];
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Demo Restaurant</Text>
-        <Text style={styles.subtitle}>Select a module to continue</Text>
+    <View style={styles.container}>
+      <SyncStatusIndicator />
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Demo Restaurant</Text>
+          <Text style={styles.subtitle}>Select a module to continue</Text>
 
         <View style={styles.grid}>
           {modules.map((module) => (
@@ -62,6 +83,7 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
     </ScrollView>
+    </View>
   );
 }
 
@@ -69,6 +91,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     padding: 24,

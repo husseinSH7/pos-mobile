@@ -12,6 +12,9 @@ import {
   View,
 } from "react-native";
 import { api } from "../services/api";
+import { useRealtimeStore } from "../store/realtimeStore";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorMessage from "../components/ErrorMessage";
 
 type KitchenStatus = "PENDING" | "PREPARING" | "READY";
 
@@ -48,16 +51,18 @@ export default function KitchenScreen({ navigation }: any) {
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const kitchenTickets = useRealtimeStore((s) => s.kitchenTickets);
 
   const fetchTickets = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/kitchen/tickets");
       setTickets(res.data);
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "Failed to load kitchen tickets."
-      );
+      const message = error?.response?.data?.message || "Failed to load kitchen tickets.";
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -68,6 +73,30 @@ export default function KitchenScreen({ navigation }: any) {
     fetchTickets();
   }, [fetchTickets]);
 
+  // Real-time kitchen ticket updates
+  useEffect(() => {
+    if (kitchenTickets.length === 0) return;
+
+    const latestTicket = kitchenTickets[kitchenTickets.length - 1];
+    
+    setTickets((prevTickets) => {
+      const existingIndex = prevTickets.findIndex(t => t.id === latestTicket.ticketId);
+      
+      if (existingIndex >= 0) {
+        // Update existing ticket
+        return prevTickets.map((ticket) =>
+          ticket.id === latestTicket.ticketId
+            ? { ...ticket, status: latestTicket.status as KitchenStatus }
+            : ticket
+        );
+      } else {
+        // This is a new ticket, we need to fetch the full data
+        fetchTickets();
+        return prevTickets;
+      }
+    });
+  }, [kitchenTickets, fetchTickets]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchTickets();
@@ -77,17 +106,28 @@ export default function KitchenScreen({ navigation }: any) {
     ticketId: string,
     nextStatus: KitchenStatus
   ) => {
+    const previousStatus = tickets.find(t => t.id === ticketId)?.status;
+    
+    // Optimistic update
+    setTickets((prev) =>
+      prev.map((ticket) =>
+        ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket
+      )
+    );
+
     try {
       await api.patch(`/kitchen/tickets/${ticketId}/status`, {
         status: nextStatus,
       });
-
-      setTickets((prev) =>
-        prev.map((ticket) =>
-          ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket
-        )
-      );
     } catch (error: any) {
+      // Rollback on error
+      if (previousStatus) {
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId ? { ...ticket, status: previousStatus } : ticket
+          )
+        );
+      }
       Alert.alert(
         "Error",
         error?.response?.data?.message || "Failed to update ticket."
@@ -122,12 +162,11 @@ export default function KitchenScreen({ navigation }: any) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#F97316" />
-        <Text style={styles.loadingText}>Loading kitchen...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading kitchen tickets..." />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={fetchTickets} />;
   }
 
   return (

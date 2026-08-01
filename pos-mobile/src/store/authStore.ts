@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { setAuthToken } from "../services/api";
+import { initializeWebSocket, disconnectWebSocket } from "../services/websocket";
+import { useRealtimeStore } from "./realtimeStore";
+import { initializeNetworkMonitoring } from "../services/network";
 
 export interface User {
   id: string;
@@ -23,6 +26,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: (user, token) => {
     setAuthToken(token);
+    
+    // Initialize WebSocket connection
+    initializeWebSocket(token);
+    
+    // Connect realtime store
+    useRealtimeStore.getState().connect();
+
+    // Initialize network monitoring
+    initializeNetworkMonitoring();
 
     set({
       user,
@@ -33,6 +45,12 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     setAuthToken(null);
+    
+    // Disconnect WebSocket
+    disconnectWebSocket();
+    
+    // Disconnect realtime store
+    useRealtimeStore.getState().disconnect();
 
     set({
       user: null,

@@ -1,6 +1,7 @@
 import axios from "axios";
+import Constants from "expo-constants";
 
-const API_BASE_URL = "http://192.168.7.6:4000";
+const API_BASE_URL = Constants.expoConfig?.extra?.API_URL || "http://192.168.1.8:4000";
 
 let authToken: string | null = null;
 
@@ -25,3 +26,13 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
+
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const message = error.response?.data?.message || error.message || "An error occurred";
+    console.error("API Error:", message);
+    return Promise.reject(error);
+  }
+);

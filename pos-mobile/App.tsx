@@ -12,6 +12,7 @@ import KitchenScreen from "./src/screens/kitchenScreen";
 import CustomersScreen from "./src/screens/CustomersScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import OrdersScreen from "./src/screens/OrdersScreen";
+import ShiftScreen from "./src/screens/ShiftScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +34,7 @@ export default function App() {
             <Stack.Screen name="Kitchen" component={KitchenScreen} />
             <Stack.Screen name="Customers" component={CustomersScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Shift" component={ShiftScreen} />
           </>
         )}
       </Stack.Navigator>

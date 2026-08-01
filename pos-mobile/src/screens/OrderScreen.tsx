@@ -13,6 +13,12 @@ import {
 } from "react-native";
 import { api } from "../services/api";
 import { useActiveOrderStore } from "../store/activeOrderStore";
+import { useAuthStore } from "../store/authStore";
+import { useSyncStore } from "../store/syncStore";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorMessage from "../components/ErrorMessage";
+import { saveOfflineOrder, getOfflineCategories, getOfflineProducts } from "../services/database";
+import { isOnline } from "../services/network";
 
 type ModifierOption = {
   id: string;
@@ -61,8 +67,11 @@ type CartItem = {
 
 export default function OrderScreen({ navigation }: any) {
   const activeTable = useActiveOrderStore((s) => s.activeTableOrder);
+  const user = useAuthStore((s) => s.user);
+  const { loadSyncStatus } = useSyncStore();
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("ALL");
@@ -85,18 +94,34 @@ export default function OrderScreen({ navigation }: any) {
 
   const loadMenu = async () => {
     try {
-      const [catRes, prodRes] = await Promise.all([
-        api.get("/menu/categories"),
-        api.get("/menu/products?includeModifiers=true"),
-      ]);
+      setError(null);
+      
+      if (isOnline()) {
+        // Try to load from API
+        const [catRes, prodRes] = await Promise.all([
+          api.get("/menu/categories"),
+          api.get("/menu/products?includeModifiers=true"),
+        ]);
 
-      setCategories(catRes.data);
-      setProducts(prodRes.data);
+        setCategories(catRes.data);
+        setProducts(prodRes.data);
+      } else {
+        // Load from offline database
+        if (user) {
+          const [offlineCats, offlineProds] = await Promise.all([
+            getOfflineCategories(user.restaurantId),
+            getOfflineProducts(user.restaurantId),
+          ]);
+
+          setCategories(offlineCats);
+          setProducts(offlineProds);
+        } else {
+          throw new Error("User not authenticated for offline access");
+        }
+      }
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "Failed to load menu."
-      );
+      const message = error?.response?.data?.message || error?.message || "Failed to load menu.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -205,33 +230,63 @@ export default function OrderScreen({ navigation }: any) {
 
     setSubmitting(true);
 
-    try {
-      await api.post("/orders", {
-        tableId: activeTable?.tableId ?? null,
-        orderType,
-        subtotal,
-        taxAmount: tax,
-        totalAmount: total,
-        items: cart.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.totalPrice,
-          modifiers: item.modifiers.map((m) => ({
-            modifierOptionId: m.modifierOptionId,
-            nameSnapshot: m.name,
-            priceDelta: m.priceDelta,
-          })),
+    const orderData = {
+      tableId: activeTable?.tableId ?? null,
+      orderType,
+      subtotal,
+      taxAmount: tax,
+      totalAmount: total,
+      items: cart.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        modifiers: item.modifiers.map((m) => ({
+          modifierOptionId: m.modifierOptionId,
+          nameSnapshot: m.name,
+          priceDelta: m.priceDelta,
         })),
-      });
+      })),
+    };
 
-      Alert.alert("Success", "Order sent to kitchen.");
+    try {
+      if (isOnline()) {
+        // Online: Send to backend
+        await api.post("/orders", orderData);
+        Alert.alert("Success", "Order sent to kitchen.");
+      } else {
+        // Offline: Save locally
+        if (!user) {
+          throw new Error("User not authenticated");
+        }
+
+        await saveOfflineOrder({
+          restaurantId: user.restaurantId,
+          userId: user.id,
+          tableId: activeTable?.tableId || null,
+          customerId: null,
+          orderType: orderData.orderType,
+          subtotal: orderData.subtotal,
+          taxAmount: orderData.taxAmount,
+          totalAmount: orderData.totalAmount,
+          items: JSON.stringify(orderData.items),
+        });
+
+        Alert.alert(
+          "Offline Order Saved",
+          "Order will be synced when you're back online."
+        );
+        
+        // Refresh sync status
+        await loadSyncStatus();
+      }
+
       setCart([]);
       navigation.navigate("Tables");
     } catch (error: any) {
       Alert.alert(
         "Error",
-        error?.response?.data?.message || "Failed to create order."
+        error?.response?.data?.message || error?.message || "Failed to create order."
       );
     } finally {
       setSubmitting(false);
@@ -239,12 +294,11 @@ export default function OrderScreen({ navigation }: any) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#F97316" />
-        <Text style={styles.loadingText}>Loading sales screen...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading menu..." />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={loadMenu} />;
   }
 
   return (
