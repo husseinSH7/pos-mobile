@@ -34,6 +34,8 @@ export interface TableStatusEvent {
   status: string;
   orderId?: string;
   orderNumber?: number;
+  guestCount?: number;
+  serverId?: string;
 }
 
 export function initializeWebSocket(token: string): Socket {

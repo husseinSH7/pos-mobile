@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  PanResponder,
 } from "react-native";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
@@ -35,9 +36,21 @@ interface Table {
   areaName?: string | null;
   areaRelation?: TableArea | null;
   isActive: boolean;
-  status?: "AVAILABLE" | "OCCUPIED" | "RESERVED" | "DISABLED";
+  status?: "AVAILABLE" | "OCCUPIED" | "PAID" | "RESERVED" | "NEEDS_ATTENTION" | "DISABLED";
   hasOpenOrder?: boolean;
   openOrderId?: string | null;
+  guestCount?: number;
+  serverId?: string | null;
+  serverName?: string | null;
+  occupiedAt?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  shape?: "RECTANGLE" | "SQUARE" | "ROUND" | null;
+  rotation?: number | null;
 }
 
 export default function TablesScreen({ navigation }: any) {
@@ -48,6 +61,17 @@ export default function TablesScreen({ navigation }: any) {
 
   const [selectedArea, setSelectedArea] = useState<string>("All");
   const [loadingTableId, setLoadingTableId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "floor">("list");
+
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
+  const [selectedTableForTransfer, setSelectedTableForTransfer] = useState<Table | null>(null);
+  const [targetTableId, setTargetTableId] = useState<string | null>(null);
+  const [transferring, setTransferring] = useState(false);
+
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [selectedTablesForMerge, setSelectedTablesForMerge] = useState<Table[]>([]);
+  const [targetTableForMerge, setTargetTableForMerge] = useState<Table | null>(null);
+  const [merging, setMerging] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [creatingTable, setCreatingTable] = useState(false);
@@ -67,6 +91,63 @@ export default function TablesScreen({ navigation }: any) {
       table.area ||
       "Main Hall"
     );
+  };
+
+  const getTableStatusColor = (status?: string) => {
+    switch (status) {
+      case "AVAILABLE":
+        return "#DCFCE7"; // Green
+      case "OCCUPIED":
+        return "#DBEAFE"; // Blue
+      case "PAID":
+        return "#FEF3C7"; // Yellow
+      case "RESERVED":
+        return "#E0E7FF"; // Indigo
+      case "NEEDS_ATTENTION":
+        return "#FEE2E2"; // Red
+      case "DISABLED":
+        return "#F1F5F9"; // Gray
+      default:
+        return "#DCFCE7";
+    }
+  };
+
+  const getTableStatusTextColor = (status?: string) => {
+    switch (status) {
+      case "AVAILABLE":
+        return "#16A34A";
+      case "OCCUPIED":
+        return "#2563EB";
+      case "PAID":
+        return "#D97706";
+      case "RESERVED":
+        return "#4F46E5";
+      case "NEEDS_ATTENTION":
+        return "#DC2626";
+      case "DISABLED":
+        return "#64748B";
+      default:
+        return "#16A34A";
+    }
+  };
+
+  const getTableStatusLabel = (status?: string) => {
+    switch (status) {
+      case "AVAILABLE":
+        return "Available";
+      case "OCCUPIED":
+        return "Occupied";
+      case "PAID":
+        return "Paid";
+      case "RESERVED":
+        return "Reserved";
+      case "NEEDS_ATTENTION":
+        return "Needs Attention";
+      case "DISABLED":
+        return "Disabled";
+      default:
+        return "Available";
+    }
   };
 
   const fetchTables = useCallback(async () => {
@@ -98,9 +179,11 @@ export default function TablesScreen({ navigation }: any) {
         table.id === latestUpdate.tableId
           ? {
               ...table,
-              status: latestUpdate.status as "AVAILABLE" | "OCCUPIED" | "RESERVED" | "DISABLED",
+              status: latestUpdate.status as "AVAILABLE" | "OCCUPIED" | "PAID" | "RESERVED" | "NEEDS_ATTENTION" | "DISABLED",
               hasOpenOrder: latestUpdate.status === "OCCUPIED",
               openOrderId: latestUpdate.orderId || null,
+              guestCount: latestUpdate.guestCount,
+              serverId: latestUpdate.serverId,
             }
           : table
       )
@@ -203,6 +286,60 @@ export default function TablesScreen({ navigation }: any) {
     ]);
   };
 
+  const handleTransferTable = async () => {
+    if (!selectedTableForTransfer || !targetTableId) {
+      Alert.alert("Error", "Please select a target table");
+      return;
+    }
+
+    setTransferring(true);
+
+    try {
+      await api.post(`/tables/${selectedTableForTransfer.id}/transfer`, {
+        targetTableId,
+      });
+
+      Alert.alert("Success", "Table transferred successfully");
+      setTransferModalVisible(false);
+      setSelectedTableForTransfer(null);
+      setTargetTableId(null);
+      fetchTables();
+    } catch (error: any) {
+      const message = error?.response?.data?.message || "Failed to transfer table";
+      Alert.alert("Error", message);
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleMergeTables = async () => {
+    if (selectedTablesForMerge.length === 0 || !targetTableForMerge) {
+      Alert.alert("Error", "Please select tables to merge");
+      return;
+    }
+
+    setMerging(true);
+
+    try {
+      const sourceTableIds = selectedTablesForMerge.map(t => t.id);
+      await api.post("/tables/merge", {
+        sourceTableIds,
+        targetTableId: targetTableForMerge.id,
+      });
+
+      Alert.alert("Success", "Tables merged successfully");
+      setMergeModalVisible(false);
+      setSelectedTablesForMerge([]);
+      setTargetTableForMerge(null);
+      fetchTables();
+    } catch (error: any) {
+      const message = error?.response?.data?.message || "Failed to merge tables";
+      Alert.alert("Error", message);
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const handleBackHome = () => {
     navigation.navigate("Home");
   };
@@ -288,107 +425,140 @@ export default function TablesScreen({ navigation }: any) {
           {selectedArea === "All" ? "All Tables" : selectedArea}
         </Text>
 
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Text style={styles.createButtonText}>+ Add Table</Text>
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.iconButton, viewMode === "list" && styles.iconButtonActive]}
+            onPress={() => setViewMode("list")}
+          >
+            <Text style={styles.iconButtonText}>☰</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.iconButton, viewMode === "floor" && styles.iconButtonActive]}
+            onPress={() => setViewMode("floor")}
+          >
+            <Text style={styles.iconButtonText}>▦</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => setModalVisible(true)}
+          >
+            <Text style={styles.createButtonText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <FlatList
-        data={filteredTables}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.tableRow}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={COLORS.accent}
-          />
-        }
-        renderItem={({ item }) => {
-          const isLoading = loadingTableId === item.id;
-          const isOccupied = !!item.hasOpenOrder || item.status === "OCCUPIED";
-          const areaName = getTableAreaName(item);
+      {viewMode === "list" ? (
+        <FlatList
+          data={filteredTables}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.tableRow}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={COLORS.accent}
+            />
+          }
+          renderItem={({ item }) => {
+            const isLoading = loadingTableId === item.id;
+            const isOccupied = !!item.hasOpenOrder || item.status === "OCCUPIED";
+            const areaName = getTableAreaName(item);
+            const statusColor = getTableStatusColor(item.status);
+            const statusTextColor = getTableStatusTextColor(item.status);
+            const statusLabel = getTableStatusLabel(item.status);
 
-          return (
-            <TouchableOpacity
-              style={[
-                styles.tableCard,
-                isOccupied ? styles.tableCardOccupied : styles.tableCardFree,
-              ]}
-              onPress={() => handleTablePress(item)}
-              activeOpacity={0.85}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={COLORS.accent} />
-              ) : (
-                <>
-                  <View style={styles.cardTop}>
-                    <View>
-                      <Text style={styles.tableLabel}>Table</Text>
-                      <Text style={styles.tableName}>{item.name}</Text>
-                    </View>
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.tableCard,
+                  { backgroundColor: statusColor, borderColor: statusTextColor },
+                ]}
+                onPress={() => handleTablePress(item)}
+                activeOpacity={0.85}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={COLORS.accent} />
+                ) : (
+                  <>
+                    <View style={styles.cardTop}>
+                      <View>
+                        <Text style={styles.tableLabel}>Table</Text>
+                        <Text style={styles.tableName}>{item.name}</Text>
+                      </View>
 
-                    <View
-                      style={[
-                        styles.statusPill,
-                        isOccupied
-                          ? styles.statusPillOccupied
-                          : styles.statusPillAvailable,
-                      ]}
-                    >
-                      <Text
+                      <View
                         style={[
-                          styles.statusPillText,
-                          isOccupied
-                            ? styles.statusTextOccupied
-                            : styles.statusTextAvailable,
+                          styles.statusPill,
+                          { backgroundColor: statusTextColor },
                         ]}
                       >
-                        {isOccupied ? "Occupied" : "Available"}
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            { color: "#FFFFFF" },
+                          ]}
+                        >
+                          {statusLabel}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.cardMeta}>
+                      <Text style={styles.metaText}>📍 {areaName}</Text>
+                      <Text style={styles.metaText}>
+                        👥 {item.seats ?? 2} seats
+                      </Text>
+                      {item.guestCount && item.guestCount > 0 && (
+                        <Text style={styles.metaText}>
+                          👫 {item.guestCount} guests
+                        </Text>
+                      )}
+                    </View>
+
+                    <View style={styles.cardFooter}>
+                      <Text style={styles.footerText}>
+                        {isOccupied ? "Open order" : "Tap to start order"}
                       </Text>
                     </View>
-                  </View>
+                  </>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No tables found</Text>
+              <Text style={styles.emptySubtitle}>
+                Add your first table to start dine-in orders.
+              </Text>
 
-                  <View style={styles.cardMeta}>
-                    <Text style={styles.metaText}>📍 {areaName}</Text>
-                    <Text style={styles.metaText}>
-                      👥 {item.seats ?? 2} seats
-                    </Text>
-                  </View>
-
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.footerText}>
-                      {isOccupied ? "Open order" : "Tap to start order"}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No tables found</Text>
-            <Text style={styles.emptySubtitle}>
-              Add your first table to start dine-in orders.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => setModalVisible(true)}
-            >
-              <Text style={styles.emptyButtonText}>Create First Table</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => setModalVisible(true)}
+              >
+                <Text style={styles.emptyButtonText}>Create First Table</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      ) : (
+        <FloorPlanView
+          tables={filteredTables}
+          onTablePress={handleTablePress}
+          loadingTableId={loadingTableId}
+          getTableStatusColor={getTableStatusColor}
+          getTableStatusTextColor={getTableStatusTextColor}
+          getTableStatusLabel={getTableStatusLabel}
+          onTransfer={setSelectedTableForTransfer}
+          onOpenTransferModal={() => setTransferModalVisible(true)}
+        />
+      )}
 
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
@@ -447,7 +617,278 @@ export default function TablesScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Transfer Table Modal */}
+      <Modal transparent visible={transferModalVisible} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Transfer Table</Text>
+            <Text style={styles.modalSubtitle}>
+              Move order from {selectedTableForTransfer?.name} to another table
+            </Text>
+
+            <Text style={styles.inputLabel}>Select Target Table</Text>
+            <ScrollView style={styles.tableSelector} nestedScrollEnabled>
+              {filteredTables
+                .filter(t => t.id !== selectedTableForTransfer?.id && t.status === "AVAILABLE")
+                .map(table => (
+                  <TouchableOpacity
+                    key={table.id}
+                    style={[
+                      styles.tableOption,
+                      targetTableId === table.id && styles.tableOptionSelected,
+                    ]}
+                    onPress={() => setTargetTableId(table.id)}
+                  >
+                    <Text style={styles.tableOptionName}>{table.name}</Text>
+                    <Text style={styles.tableOptionSeats}>{table.seats} seats</Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setTransferModalVisible(false);
+                  setSelectedTableForTransfer(null);
+                  setTargetTableId(null);
+                }}
+                disabled={transferring}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleTransferTable}
+                disabled={transferring || !targetTableId}
+              >
+                {transferring ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Transfer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Merge Tables Modal */}
+      <Modal transparent visible={mergeModalVisible} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Merge Tables</Text>
+            <Text style={styles.modalSubtitle}>
+              Combine orders from multiple tables into one
+            </Text>
+
+            <Text style={styles.inputLabel}>Select Source Tables</Text>
+            <ScrollView style={styles.tableSelector} nestedScrollEnabled>
+              {filteredTables
+                .filter(t => t.status === "OCCUPIED" || t.hasOpenOrder)
+                .map(table => (
+                  <TouchableOpacity
+                    key={table.id}
+                    style={[
+                      styles.tableOption,
+                      selectedTablesForMerge.some(t => t.id === table.id) && styles.tableOptionSelected,
+                    ]}
+                    onPress={() => {
+                      if (selectedTablesForMerge.some(t => t.id === table.id)) {
+                        setSelectedTablesForMerge(prev => prev.filter(t => t.id !== table.id));
+                      } else {
+                        setSelectedTablesForMerge(prev => [...prev, table]);
+                      }
+                    }}
+                  >
+                    <Text style={styles.tableOptionName}>{table.name}</Text>
+                    <Text style={styles.tableOptionSeats}>{table.seats} seats</Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <Text style={styles.inputLabel}>Select Target Table</Text>
+            <ScrollView style={styles.tableSelector} nestedScrollEnabled>
+              {filteredTables
+                .filter(t => t.status === "AVAILABLE" && !selectedTablesForMerge.some(s => s.id === t.id))
+                .map(table => (
+                  <TouchableOpacity
+                    key={table.id}
+                    style={[
+                      styles.tableOption,
+                      targetTableForMerge?.id === table.id && styles.tableOptionSelected,
+                    ]}
+                    onPress={() => setTargetTableForMerge(table)}
+                  >
+                    <Text style={styles.tableOptionName}>{table.name}</Text>
+                    <Text style={styles.tableOptionSeats}>{table.seats} seats</Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setMergeModalVisible(false);
+                  setSelectedTablesForMerge([]);
+                  setTargetTableForMerge(null);
+                }}
+                disabled={merging}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleMergeTables}
+                disabled={merging || selectedTablesForMerge.length === 0 || !targetTableForMerge}
+              >
+                {merging ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Merge</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function FloorPlanView({
+  tables,
+  onTablePress,
+  loadingTableId,
+  getTableStatusColor,
+  getTableStatusTextColor,
+  getTableStatusLabel,
+  onTransfer,
+  onOpenTransferModal,
+}: {
+  tables: Table[];
+  onTablePress: (table: Table) => void;
+  loadingTableId: string | null;
+  getTableStatusColor: (status?: string) => string;
+  getTableStatusTextColor: (status?: string) => string;
+  getTableStatusLabel: (status?: string) => string;
+  onTransfer?: (table: Table) => void;
+  onOpenTransferModal?: () => void;
+}) {
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+
+  const handleTableLongPress = (table: Table) => {
+    setSelectedTable(table);
+  };
+
+  return (
+    <View style={styles.floorPlanContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.floorPlanScroll}
+      >
+        <View style={styles.floorPlanCanvas}>
+          {tables.map((table) => {
+            const isLoading = loadingTableId === table.id;
+            const statusColor = getTableStatusColor(table.status);
+            const statusTextColor = getTableStatusTextColor(table.status);
+            const statusLabel = getTableStatusLabel(table.status);
+
+            // Default position if not set
+            const x = table.x ?? 50;
+            const y = table.y ?? 50;
+            const width = table.width ?? 80;
+            const height = table.height ?? 80;
+
+            return (
+              <TouchableOpacity
+                key={table.id}
+                style={[
+                  styles.floorPlanTable,
+                  {
+                    left: `${x}%`,
+                    top: `${y}%`,
+                    width: width,
+                    height: height,
+                    backgroundColor: statusColor,
+                    borderColor: statusTextColor,
+                  },
+                ]}
+                onPress={() => onTablePress(table)}
+                onLongPress={() => handleTableLongPress(table)}
+                activeOpacity={0.85}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color={statusTextColor} />
+                ) : (
+                  <>
+                    <Text style={[styles.floorPlanTableName, { color: statusTextColor }]}>
+                      {table.name}
+                    </Text>
+                    <Text style={[styles.floorPlanTableStatus, { color: statusTextColor }]}>
+                      {statusLabel}
+                    </Text>
+                    {table.guestCount && table.guestCount > 0 && (
+                      <Text style={[styles.floorPlanGuestCount, { color: statusTextColor }]}>
+                        {table.guestCount}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      {selectedTable && (
+        <Modal transparent visible={!!selectedTable} animationType="fade">
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setSelectedTable(null)}
+          >
+            <View style={styles.tableDetailCard}>
+              <Text style={styles.tableDetailTitle}>{selectedTable.name}</Text>
+              <Text style={styles.tableDetailLabel}>
+                Status: {getTableStatusLabel(selectedTable.status)}
+              </Text>
+              <Text style={styles.tableDetailLabel}>
+                Seats: {selectedTable.seats ?? 2}
+              </Text>
+              {selectedTable.guestCount && (
+                <Text style={styles.tableDetailLabel}>
+                  Guests: {selectedTable.guestCount}
+                </Text>
+              )}
+              {selectedTable.serverName && (
+                <Text style={styles.tableDetailLabel}>
+                  Server: {selectedTable.serverName}
+                </Text>
+              )}
+              {selectedTable.notes && (
+                <Text style={styles.tableDetailLabel}>
+                  Notes: {selectedTable.notes}
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={styles.detailCloseButton}
+                onPress={() => setSelectedTable(null)}
+              >
+                <Text style={styles.detailCloseButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </View>
   );
 }
 
@@ -586,6 +1027,29 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
     color: "#0F172A",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconButtonActive: {
+    backgroundColor: "#111827",
+    borderColor: "#111827",
+  },
+  iconButtonText: {
+    fontSize: 18,
+    color: "#64748B",
   },
   createButton: {
     backgroundColor: "#F97316",
@@ -778,5 +1242,106 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: "#FFFFFF",
     fontWeight: "900",
+  },
+  floorPlanContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  floorPlanScroll: {
+    flexGrow: 1,
+  },
+  floorPlanCanvas: {
+    width: 800,
+    height: 600,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    position: "relative",
+  },
+  floorPlanTable: {
+    position: "absolute",
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  floorPlanTableName: {
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  floorPlanTableStatus: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  floorPlanGuestCount: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  tableDetailCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "85%",
+    maxWidth: 320,
+  },
+  tableDetailTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 16,
+  },
+  tableDetailLabel: {
+    fontSize: 15,
+    color: "#475569",
+    marginBottom: 8,
+  },
+  detailCloseButton: {
+    backgroundColor: "#F97316",
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  detailCloseButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  tableSelector: {
+    maxHeight: 150,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+  },
+  tableOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  tableOptionSelected: {
+    backgroundColor: "#DBEAFE",
+  },
+  tableOptionName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  tableOptionSeats: {
+    fontSize: 13,
+    color: "#64748B",
   },
 });
