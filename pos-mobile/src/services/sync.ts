@@ -4,7 +4,7 @@ import {
   updateOrderStatus,
   saveOfflineProducts,
   saveOfflineCategories,
-  saveOfflineCustomers,
+  saveOfflineCustomer,
   getSyncStatus,
   updateSyncStatus,
   updateOnlineStatus,
@@ -248,7 +248,7 @@ class SyncService {
       }));
 
       for (const customer of customers) {
-        await saveOfflineCustomers(customer);
+        await saveOfflineCustomer(customer);
       }
 
       return customers.length;

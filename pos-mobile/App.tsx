@@ -13,6 +13,9 @@ import CustomersScreen from "./src/screens/CustomersScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import OrdersScreen from "./src/screens/OrdersScreen";
 import ShiftScreen from "./src/screens/ShiftScreen";
+import PaymentScreen from "./src/screens/PaymentScreen";
+import PaymentHistoryScreen from "./src/screens/PaymentHistoryScreen";
+import SplitScreen from "./src/screens/SplitScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +38,9 @@ export default function App() {
             <Stack.Screen name="Customers" component={CustomersScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="Shift" component={ShiftScreen} />
+            <Stack.Screen name="Payment" component={PaymentScreen} />
+            <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
+            <Stack.Screen name="Split" component={SplitScreen} />
           </>
         )}
       </Stack.Navigator>

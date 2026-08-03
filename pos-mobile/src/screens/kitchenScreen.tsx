@@ -43,6 +43,7 @@ type KitchenTicket = {
     } | null;
     items: TicketItem[];
   };
+  preparedAt?: string;
 };
 
 const STATUSES: KitchenStatus[] = ["PENDING", "PREPARING", "READY"];
@@ -161,6 +162,47 @@ export default function KitchenScreen({ navigation }: any) {
     return "Ready";
   };
 
+  const getUrgencyLevel = (createdAt: string, status: KitchenStatus) => {
+    if (status !== "PENDING") return "none";
+    const createdTime = new Date(createdAt).getTime();
+    const now = Date.now();
+    const elapsedMinutes = (now - createdTime) / (1000 * 60);
+    
+    if (elapsedMinutes < 10) return "low";
+    if (elapsedMinutes < 20) return "medium";
+    return "high";
+  };
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case "low": return "#DCFCE7";
+      case "medium": return "#FEF3C7";
+      case "high": return "#FEE2E2";
+      default: return "#F8FAFC";
+    }
+  };
+
+  const getUrgencyBorderColor = (urgency: string) => {
+    switch (urgency) {
+      case "low": return "#16A34A";
+      case "medium": return "#F59E0B";
+      case "high": return "#DC2626";
+      default: return "#E2E8F0";
+    }
+  };
+
+  const getElapsedTime = (createdAt: string) => {
+    const createdTime = new Date(createdAt).getTime();
+    const now = Date.now();
+    const elapsedMinutes = Math.floor((now - createdTime) / (1000 * 60));
+    
+    if (elapsedMinutes < 1) return "Just now";
+    if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+    const hours = Math.floor(elapsedMinutes / 60);
+    const mins = elapsedMinutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
   if (loading) {
     return <LoadingSpinner message="Loading kitchen tickets..." />;
   }
@@ -215,18 +257,27 @@ export default function KitchenScreen({ navigation }: any) {
               }
               renderItem={({ item }) => {
                 const nextStatus = getNextStatus(item.status);
+                const urgency = getUrgencyLevel(item.createdAt, item.status);
+                const urgencyColor = getUrgencyColor(urgency);
+                const urgencyBorderColor = getUrgencyBorderColor(urgency);
 
                 return (
-                  <View style={styles.ticketCard}>
+                  <View style={[styles.ticketCard, { backgroundColor: urgencyColor, borderColor: urgencyBorderColor }]}>
                     <View style={styles.ticketTop}>
                       <Text style={styles.orderNumber}>
                         #{item.order.orderNumber}
                       </Text>
 
-                      <Text style={styles.orderType}>
-                        {item.order.orderType.replace("_", " ")}
-                      </Text>
+                      <View style={styles.timingBadge}>
+                        <Text style={[styles.timingText, urgency === "high" && styles.urgentTiming]}>
+                          {getElapsedTime(item.createdAt)}
+                        </Text>
+                      </View>
                     </View>
+
+                    <Text style={styles.orderType}>
+                      {item.order.orderType.replace("_", " ")}
+                    </Text>
 
                     <Text style={styles.tableText}>
                       {item.order.table?.name
@@ -256,7 +307,7 @@ export default function KitchenScreen({ navigation }: any) {
 
                     {nextStatus ? (
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.actionButton, urgency === "high" && styles.urgentActionButton]}
                         onPress={() => updateTicketStatus(item.id, nextStatus)}
                       >
                         <Text style={styles.actionButtonText}>
@@ -381,14 +432,29 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   orderNumber: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: "900",
     color: "#0F172A",
   },
+  timingBadge: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  timingText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#64748B",
+  },
+  urgentTiming: {
+    color: "#DC2626",
+  },
   orderType: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
     color: "#F97316",
+    marginTop: 4,
   },
   tableText: {
     color: "#64748B",
@@ -419,6 +485,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
+  },
+  urgentActionButton: {
+    backgroundColor: "#DC2626",
   },
   actionButtonText: {
     color: "#FFFFFF",
