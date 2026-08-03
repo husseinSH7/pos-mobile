@@ -5,6 +5,11 @@ const API_BASE_URL =
   Constants.expoConfig?.extra?.API_URL ||
   "http://192.168.1.12:4000";
 
+// The restaurant_POS Express app mounts all routes under /api
+const API_ROOT = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL
+  : `${API_BASE_URL}/api`;
+
 let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {
@@ -12,7 +17,7 @@ export function setAuthToken(token: string | null) {
 }
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_ROOT,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",

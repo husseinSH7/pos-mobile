@@ -21,6 +21,7 @@ type Order = {
   orderType: "DINE_IN" | "TAKEOUT" | "DELIVERY";
   status: "OPEN" | "PAID" | "VOIDED" | "COMPLETED";
   totalAmount: string | number;
+  notes?: string | null;
   createdAt: string;
   table?: {
     name: string;
@@ -86,6 +87,31 @@ export default function OrdersScreen({ navigation }: any) {
       }
     });
   }, [recentOrders, fetchOrders]);
+
+  const handleVoid = async (orderId: string) => {
+    Alert.alert(
+      "Void order",
+      "This will cancel the order and free the table. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Void",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.post(`/orders/${orderId}/void`, { reason: "Voided from POS" });
+              fetchOrders();
+            } catch (error: any) {
+              Alert.alert(
+                "Void failed",
+                error?.response?.data?.message || error?.message || "Could not void order."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const summary = useMemo(() => {
     return {
@@ -186,6 +212,10 @@ export default function OrdersScreen({ navigation }: any) {
               ))}
             </View>
 
+            {item.notes ? (
+              <Text style={styles.notesText}>{item.notes}</Text>
+            ) : null}
+
             {item.status === "OPEN" && (
               <View style={styles.cardActions}>
                 <TouchableOpacity
@@ -203,6 +233,12 @@ export default function OrdersScreen({ navigation }: any) {
                   }
                 >
                   <Text style={styles.actionButtonText}>Split</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.voidButton]}
+                  onPress={() => handleVoid(item.id)}
+                >
+                  <Text style={styles.actionButtonText}>Void</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -347,6 +383,20 @@ const styles = StyleSheet.create({
   },
   splitButton: {
     backgroundColor: "#F97316",
+  },
+  notesText: {
+    color: "#B45309",
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 10,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  voidButton: {
+    backgroundColor: "#DC2626",
   },
   actionButtonText: {
     color: "#FFFFFF",

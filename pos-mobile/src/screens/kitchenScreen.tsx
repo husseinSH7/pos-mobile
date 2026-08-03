@@ -21,6 +21,7 @@ type KitchenStatus = "PENDING" | "PREPARING" | "READY";
 type TicketItem = {
   id: string;
   quantity: number;
+  notes?: string | null;
   product?: {
     name: string;
   };
@@ -38,6 +39,7 @@ type KitchenTicket = {
     id: string;
     orderNumber: number;
     orderType: "DINE_IN" | "TAKEOUT" | "DELIVERY";
+    notes?: string | null;
     table?: {
       name: string;
     } | null;
@@ -279,6 +281,12 @@ export default function KitchenScreen({ navigation }: any) {
                       {item.order.orderType.replace("_", " ")}
                     </Text>
 
+                    {item.order.notes ? (
+                      <View style={styles.notesBadge}>
+                        <Text style={styles.notesText}>{item.order.notes}</Text>
+                      </View>
+                    ) : null}
+
                     <Text style={styles.tableText}>
                       {item.order.table?.name
                         ? `Table ${item.order.table.name}`
@@ -292,6 +300,10 @@ export default function KitchenScreen({ navigation }: any) {
                             {orderItem.quantity}x{" "}
                             {orderItem.product?.name ?? "Item"}
                           </Text>
+
+                          {orderItem.notes ? (
+                            <Text style={styles.itemNoteText}>{orderItem.notes}</Text>
+                          ) : null}
 
                           {orderItem.modifiers?.map((modifier, index) => (
                             <Text
@@ -472,6 +484,26 @@ const styles = StyleSheet.create({
   itemName: {
     fontWeight: "900",
     color: "#0F172A",
+  },
+  notesBadge: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#F59E0B",
+  },
+  notesText: {
+    color: "#92400E",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  itemNoteText: {
+    color: "#B45309",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 4,
   },
   modifierText: {
     marginTop: 4,

@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -91,6 +92,8 @@ export default function OrderScreen({ navigation }: any) {
   const [quickModifiers, setQuickModifiers] = useState<ModifierOption[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [orderNotes, setOrderNotes] = useState("");
+  const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadMenu();
@@ -180,7 +183,38 @@ export default function OrderScreen({ navigation }: any) {
   const openProductModal = (product: Product) => {
     setSelectedProduct(product);
     setSelectedModifiers({});
+    setQuickModifiers([]);
     setQuantity(1);
+    setSelectedCourse("");
+    setEditingCartIndex(null);
+  };
+
+  const openEditCartItem = (index: number) => {
+    const item = cart[index];
+    if (!item) return;
+
+    const product = products.find((p) => p.id === item.productId);
+    if (!product) {
+      Alert.alert("Product not found", "This item can only be removed.");
+      return;
+    }
+
+    const reconstructed: Record<string, ModifierOption[]> = {};
+    product.modifierGroups?.forEach((group) => {
+      const selected = group.modifierGroup.options.filter((option) =>
+        item.modifiers.some((m) => m.modifierOptionId === option.id)
+      );
+      if (selected.length > 0) {
+        reconstructed[group.modifierGroup.id] = selected;
+      }
+    });
+
+    setSelectedProduct(product);
+    setSelectedModifiers(reconstructed);
+    setQuickModifiers([]);
+    setQuantity(item.quantity);
+    setSelectedCourse(item.course || "");
+    setEditingCartIndex(index);
   };
 
   const closeProductModal = () => {
@@ -188,6 +222,8 @@ export default function OrderScreen({ navigation }: any) {
     setSelectedModifiers({});
     setQuickModifiers([]);
     setQuantity(1);
+    setSelectedCourse("");
+    setEditingCartIndex(null);
   };
 
   const toggleQuickModifier = (option: ModifierOption) => {
@@ -260,7 +296,15 @@ export default function OrderScreen({ navigation }: any) {
       totalPrice: (unitPrice + modifierTotal) * quantity,
     };
 
-    setCart((prev) => [...prev, cartItem]);
+    if (editingCartIndex !== null) {
+      setCart((prev) => {
+        const next = [...prev];
+        next[editingCartIndex] = cartItem;
+        return next;
+      });
+    } else {
+      setCart((prev) => [...prev, cartItem]);
+    }
     closeProductModal();
   };
 
@@ -279,6 +323,7 @@ export default function OrderScreen({ navigation }: any) {
     const orderData = {
       tableId: activeTable?.tableId ?? null,
       orderType,
+      notes: orderNotes || null,
       subtotal,
       taxAmount: tax,
       totalAmount: total,
@@ -308,6 +353,7 @@ export default function OrderScreen({ navigation }: any) {
         });
 
         setCart([]);
+        setOrderNotes("");
         navigation.navigate("Payment", {
           order: createdOrder,
           orderData,
@@ -341,6 +387,7 @@ export default function OrderScreen({ navigation }: any) {
       }
 
       setCart([]);
+      setOrderNotes("");
       navigation.navigate("Tables");
     } catch (error: any) {
       Alert.alert(
@@ -442,16 +489,28 @@ export default function OrderScreen({ navigation }: any) {
                 <TouchableOpacity
                   key={`${item.productId}-${index}`}
                   style={styles.cartItem}
-                  onLongPress={() => removeCartItem(index)}
+                  onLongPress={() => openEditCartItem(index)}
                 >
                   <View style={styles.cartItemTop}>
                     <Text style={styles.cartItemName}>
                       {item.quantity}x {item.name}
                     </Text>
-                    <Text style={styles.cartItemPrice}>
-                      ${item.totalPrice.toFixed(2)}
-                    </Text>
+                    <View style={styles.cartItemActions}>
+                      <Text style={styles.cartItemPrice}>
+                        ${item.totalPrice.toFixed(2)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => removeCartItem(index)}
+                      >
+                        <Text style={styles.removeButtonText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
+
+                  {item.course ? (
+                    <Text style={styles.cartCourse}>{item.course}</Text>
+                  ) : null}
 
                   {item.modifiers.map((modifier) => (
                     <Text
@@ -468,6 +527,19 @@ export default function OrderScreen({ navigation }: any) {
               ))
             )}
           </ScrollView>
+
+          <View style={styles.notesBox}>
+            <Text style={styles.notesLabel}>Kitchen notes</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={orderNotes}
+              onChangeText={setOrderNotes}
+              placeholder="Add notes for the kitchen..."
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={2}
+            />
+          </View>
 
           <View style={styles.totalsBox}>
             <View style={styles.totalRow}>
@@ -601,7 +673,9 @@ export default function OrderScreen({ navigation }: any) {
       <Modal transparent visible={!!selectedProduct} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{selectedProduct?.name}</Text>
+            <Text style={styles.modalTitle}>
+              {editingCartIndex !== null ? "Edit Item" : selectedProduct?.name}
+            </Text>
             <Text style={styles.modalPrice}>
               ${selectedProductTotal.toFixed(2)}
             </Text>
@@ -680,7 +754,9 @@ export default function OrderScreen({ navigation }: any) {
                 style={styles.addButton}
                 onPress={addSelectedProductToCart}
               >
-                <Text style={styles.addButtonText}>Add to Order</Text>
+                <Text style={styles.addButtonText}>
+                  {editingCartIndex !== null ? "Update Item" : "Add to Order"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -842,7 +918,42 @@ const styles = StyleSheet.create({
   cartItemTop: { flexDirection: "row", justifyContent: "space-between" },
   cartItemName: { fontSize: 15, fontWeight: "900", color: "#0F172A" },
   cartItemPrice: { fontWeight: "900", color: "#0F172A" },
+  cartItemActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  removeButton: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removeButtonText: { color: "#DC2626", fontWeight: "900", fontSize: 16, lineHeight: 20 },
+  cartCourse: { color: "#F97316", fontSize: 12, fontWeight: "800", marginTop: 2 },
   cartModifier: { color: "#64748B", fontSize: 12, marginTop: 4 },
+  notesBox: {
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    paddingTop: 12,
+    marginBottom: 12,
+  },
+  notesLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 6,
+  },
+  notesInput: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#0F172A",
+    fontSize: 14,
+    minHeight: 60,
+    textAlignVertical: "top",
+  },
   totalsBox: {
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
