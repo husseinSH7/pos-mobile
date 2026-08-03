@@ -503,6 +503,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: "center",
+    alignSelf: "stretch",
   },
   paySplitText: {
     color: "#fff",

@@ -67,10 +67,12 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
     const source = split?.items ?? orderData?.items ?? order?.items ?? [];
     return source.map((item: any) => {
       const quantity = Number(item.quantity || 1);
-      const totalPrice = Number(item.totalPrice || item.totalAmount || 0);
-      const unitPrice = Number(item.unitPrice || (quantity > 0 ? totalPrice / quantity : 0));
+      const unitPrice = Number(
+        item.unitPrice || item.product?.price || (item.totalPrice ? item.totalPrice / quantity : 0) || 0
+      );
+      const totalPrice = Number(item.totalPrice || item.totalAmount || unitPrice * quantity || 0);
       return {
-        productId: item.productId || item.id || item.productId,
+        productId: item.productId || item.id,
         name: item.name || item.product?.name || "Item",
         quantity,
         unitPrice,
@@ -193,6 +195,24 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
       </View>
 
       <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+        <View style={styles.itemsCard}>
+          {items.map((item, index) => (
+            <View key={`${item.productId}-${index}`} style={styles.itemRow}>
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName}>
+                  {item.quantity}x {item.name}
+                </Text>
+                {item.modifiers ? (
+                  <Text style={styles.itemModifiers}>{item.modifiers}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.itemTotal}>
+                {formatCurrency(item.totalPrice)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total Amount</Text>
           <Text style={styles.totalAmount}>{formatCurrency(total)}</Text>
@@ -306,6 +326,30 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "800", color: COLORS.text },
   headerSub: { fontSize: 12, color: COLORS.muted, marginTop: 1 },
   body: { flex: 1, padding: 20 },
+  itemsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 16,
+  },
+  itemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  itemInfo: { flex: 1, paddingRight: 12 },
+  itemName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
+  itemModifiers: {
+    fontSize: 12,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  itemTotal: { fontSize: 15, fontWeight: "800", color: COLORS.text },
   totalCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
@@ -381,6 +425,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    alignSelf: "stretch",
     marginTop: 8,
   },
   splitBtnText: {
@@ -398,6 +443,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 18,
     alignItems: "center",
+    alignSelf: "stretch",
     shadowColor: COLORS.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
