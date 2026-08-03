@@ -35,6 +35,12 @@ export default function HomeScreen({ navigation }: any) {
       screen: "Orders",
     },
     {
+      title: "Payments",
+      description: "Payment history and receipts",
+      icon: "PAY",
+      screen: "PaymentHistory",
+    },
+    {
       title: "Kitchen",
       description: "Track kitchen tickets",
       icon: "KDS",

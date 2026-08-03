@@ -67,6 +67,7 @@ type CartItem = {
 
 export default function OrderScreen({ navigation }: any) {
   const activeTable = useActiveOrderStore((s) => s.activeTableOrder);
+  const setActiveTableOrder = useActiveOrderStore((s) => s.setActiveTableOrder);
   const user = useAuthStore((s) => s.user);
   const { loadSyncStatus } = useSyncStore();
 
@@ -252,8 +253,21 @@ export default function OrderScreen({ navigation }: any) {
     try {
       if (isOnline()) {
         // Online: Send to backend
-        await api.post("/orders", orderData);
-        Alert.alert("Success", "Order sent to kitchen.");
+        const response = await api.post("/orders", orderData);
+        const createdOrder = response.data;
+
+        setActiveTableOrder({
+          ...activeTable,
+          orderId: createdOrder.id,
+          orderNumber: createdOrder.orderNumber,
+        });
+
+        setCart([]);
+        navigation.navigate("Payment", {
+          order: createdOrder,
+          orderData,
+        });
+        return;
       } else {
         // Offline: Save locally
         if (!user) {

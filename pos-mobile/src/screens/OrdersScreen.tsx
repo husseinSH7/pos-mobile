@@ -124,6 +124,12 @@ export default function OrdersScreen({ navigation }: any) {
           <Text style={styles.title}>Orders</Text>
           <Text style={styles.subtitle}>Active and recent orders</Text>
         </View>
+        <TouchableOpacity
+          style={styles.historyButton}
+          onPress={() => navigation.navigate("PaymentHistory")}
+        >
+          <Text style={styles.historyButtonText}>History</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.summaryRow}>
@@ -179,6 +185,27 @@ export default function OrdersScreen({ navigation }: any) {
                 </Text>
               ))}
             </View>
+
+            {item.status === "OPEN" && (
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.payButton]}
+                  onPress={() =>
+                    navigation.navigate("Payment", { order: item })
+                  }
+                >
+                  <Text style={styles.actionButtonText}>Pay</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.splitButton]}
+                  onPress={() =>
+                    navigation.navigate("Split", { order: item })
+                  }
+                >
+                  <Text style={styles.actionButtonText}>Split</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.cardFooter}>
               <Text style={styles.dateText}>
@@ -292,5 +319,37 @@ const styles = StyleSheet.create({
     color: "#64748B",
     textAlign: "center",
     lineHeight: 20,
+  },
+  historyButton: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginLeft: "auto",
+  },
+  historyButtonText: { color: "#334155", fontWeight: "900", fontSize: 13 },
+  cardActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  payButton: {
+    backgroundColor: "#0F172A",
+  },
+  splitButton: {
+    backgroundColor: "#F97316",
+  },
+  actionButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 13,
   },
 });
