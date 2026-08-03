@@ -63,6 +63,7 @@ type CartItem = {
   unitPrice: number;
   modifiers: CartModifier[];
   totalPrice: number;
+  course?: string | null;
 };
 
 export default function OrderScreen({ navigation }: any) {
@@ -81,11 +82,13 @@ export default function OrderScreen({ navigation }: any) {
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEOUT" | "DELIVERY">(
     "DINE_IN"
   );
+  const [selectedCourse, setSelectedCourse] = useState<string>("");
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<
     Record<string, ModifierOption[]>
   >({});
+  const [quickModifiers, setQuickModifiers] = useState<ModifierOption[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
@@ -140,6 +143,28 @@ export default function OrderScreen({ navigation }: any) {
   const productGroups: ModifierGroup[] =
     selectedProduct?.modifierGroups?.map((x) => x.modifierGroup) ?? [];
 
+  // Get top 5 most common modifiers across all products as quick toggles
+  const allQuickModifiers = useMemo(() => {
+    const modifierCounts = new Map<string, { option: ModifierOption; count: number }>();
+    products.forEach(product => {
+      product.modifierGroups?.forEach(group => {
+        group.modifierGroup.options.forEach(option => {
+          const key = option.id;
+          const existing = modifierCounts.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            modifierCounts.set(key, { option, count: 1 });
+          }
+        });
+      });
+    });
+    return Array.from(modifierCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(item => item.option);
+  }, [products]);
+
   const selectedProductTotal = useMemo(() => {
     if (!selectedProduct) return 0;
 
@@ -147,9 +172,10 @@ export default function OrderScreen({ navigation }: any) {
     const modifiersTotal = Object.values(selectedModifiers)
       .flat()
       .reduce((sum, option) => sum + Number(option.priceDelta || 0), 0);
+    const quickModifiersTotal = quickModifiers.reduce((sum, m) => sum + Number(m.priceDelta || 0), 0);
 
-    return (base + modifiersTotal) * quantity;
-  }, [selectedProduct, selectedModifiers, quantity]);
+    return (base + modifiersTotal + quickModifiersTotal) * quantity;
+  }, [selectedProduct, selectedModifiers, quickModifiers, quantity]);
 
   const openProductModal = (product: Product) => {
     setSelectedProduct(product);
@@ -160,7 +186,18 @@ export default function OrderScreen({ navigation }: any) {
   const closeProductModal = () => {
     setSelectedProduct(null);
     setSelectedModifiers({});
+    setQuickModifiers([]);
     setQuantity(1);
+  };
+
+  const toggleQuickModifier = (option: ModifierOption) => {
+    setQuickModifiers(prev => {
+      const exists = prev.some(m => m.id === option.id);
+      if (exists) {
+        return prev.filter(m => m.id !== option.id);
+      }
+      return [...prev, option];
+    });
   };
 
   const toggleModifier = (group: ModifierGroup, option: ModifierOption) => {
@@ -195,13 +232,20 @@ export default function OrderScreen({ navigation }: any) {
       }
     }
 
-    const modifiers = Object.values(selectedModifiers)
-      .flat()
-      .map((option) => ({
+    const modifiers = [
+      ...Object.values(selectedModifiers)
+        .flat()
+        .map((option) => ({
+          modifierOptionId: option.id,
+          name: option.name,
+          priceDelta: Number(option.priceDelta || 0),
+        })),
+      ...quickModifiers.map((option) => ({
         modifierOptionId: option.id,
         name: option.name,
         priceDelta: Number(option.priceDelta || 0),
-      }));
+      })),
+    ];
 
     const unitPrice = Number(selectedProduct.price);
     const modifierTotal = modifiers.reduce((sum, m) => sum + m.priceDelta, 0);
@@ -212,6 +256,7 @@ export default function OrderScreen({ navigation }: any) {
       quantity,
       unitPrice,
       modifiers,
+      course: selectedCourse || null,
       totalPrice: (unitPrice + modifierTotal) * quantity,
     };
 
@@ -359,6 +404,31 @@ export default function OrderScreen({ navigation }: any) {
             ))}
           </View>
 
+          <View style={styles.courseRow}>
+            <Text style={styles.courseLabel}>Course:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.courseScroll}>
+              {["", "Appetizer", "Main", "Dessert", "Drink"].map((course) => (
+                <TouchableOpacity
+                  key={course || "none"}
+                  onPress={() => setSelectedCourse(course)}
+                  style={[
+                    styles.courseButton,
+                    selectedCourse === course && styles.courseButtonActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.courseButtonText,
+                      selectedCourse === course && styles.courseButtonTextActive,
+                    ]}
+                  >
+                    {course || "None"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
           <ScrollView style={styles.cartList}>
             {cart.length === 0 ? (
               <View style={styles.emptyCart}>
@@ -431,6 +501,33 @@ export default function OrderScreen({ navigation }: any) {
 
         <View style={styles.rightPanel}>
           <Text style={styles.panelTitle}>Menu</Text>
+
+          {allQuickModifiers.length > 0 && (
+            <View style={styles.quickModifiersContainer}>
+              <Text style={styles.quickModifiersLabel}>Quick Modifiers</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickModifiersScroll}
+              >
+                {allQuickModifiers.map((option) => {
+                  const isSelected = quickModifiers.some(m => m.id === option.id);
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[styles.quickModifierChip, isSelected && styles.quickModifierChipActive]}
+                      onPress={() => toggleQuickModifier(option)}
+                    >
+                      <Text style={[styles.quickModifierText, isSelected && styles.quickModifierTextActive]}>
+                        {option.name}
+                        {Number(option.priceDelta) > 0 ? ` (+$${Number(option.priceDelta).toFixed(2)})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           <ScrollView
             horizontal
@@ -643,6 +740,46 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 12,
   },
+  quickModifiersContainer: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  quickModifiersLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  quickModifiersScroll: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  quickModifierChip: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  quickModifierChipActive: {
+    backgroundColor: "#F97316",
+    borderColor: "#F97316",
+  },
+  quickModifierText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  quickModifierTextActive: {
+    color: "#FFFFFF",
+  },
   orderTypeRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   orderTypeButton: {
     flex: 1,
@@ -654,6 +791,38 @@ const styles = StyleSheet.create({
   orderTypeButtonActive: { backgroundColor: "#111827" },
   orderTypeText: { fontSize: 11, fontWeight: "900", color: "#475569" },
   orderTypeTextActive: { color: "#FFFFFF" },
+  courseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  courseLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  courseScroll: {
+    flex: 1,
+  },
+  courseButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
+    marginRight: 6,
+  },
+  courseButtonActive: {
+    backgroundColor: "#F97316",
+  },
+  courseButtonText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  courseButtonTextActive: {
+    color: "#FFFFFF",
+  },
   cartList: { flex: 1 },
   emptyCart: {
     alignItems: "center",

@@ -39,6 +39,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [tendered, setTendered] = useState("");
+  const [tipAmount, setTipAmount] = useState("");
+  const [tipPercentage, setTipPercentage] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState<PaymentRecord | null>(null);
 
@@ -62,6 +64,15 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
       order?.totalAmount ?? orderData?.totalAmount ?? subtotal + tax
     );
   }, [order, orderData, split, subtotal, tax]);
+
+  const tipValue = useMemo(() => {
+    const tip = parseFloat(tipAmount) || 0;
+    return tip;
+  }, [tipAmount]);
+
+  const finalTotal = useMemo(() => {
+    return total + tipValue;
+  }, [total, tipValue]);
 
   const items: PaymentItem[] = useMemo(() => {
     const source = split?.items ?? orderData?.items ?? order?.items ?? [];
@@ -88,8 +99,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
   const change = useMemo(() => {
     const value = parseFloat(tendered || "0");
-    return selectedMethod === "CASH" ? Math.max(0, value - total) : 0;
-  }, [tendered, total, selectedMethod]);
+    return selectedMethod === "CASH" ? Math.max(0, value - finalTotal) : 0;
+  }, [tendered, finalTotal, selectedMethod]);
 
   const displayName = split?.name
     ? `${split.name} · #${orderNumber ?? order?.orderNumber ?? "N/A"}`
@@ -103,8 +114,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
     if (selectedMethod === "CASH") {
       const value = parseFloat(tendered || "0");
-      if (value < total) {
-        Alert.alert("Insufficient amount", "The tendered amount must cover the total.");
+      if (value < finalTotal) {
+        Alert.alert("Insufficient amount", "The tendered amount must cover the total with tip.");
         return;
       }
     }
@@ -118,6 +129,7 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         await api.post(`/orders/${orderId}/pay`, {
           paymentMethod: selectedMethod,
           amountTendered: selectedMethod === "CASH" ? parseFloat(tendered) : undefined,
+          tipAmount: tipValue > 0 ? tipValue : undefined,
         });
       }
 
@@ -133,11 +145,12 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         items,
         subtotal,
         tax,
-        total,
+        total: finalTotal,
         paymentMethod: selectedMethod,
         amountTendered: selectedMethod === "CASH" ? parseFloat(tendered || "0") : null,
         change: selectedMethod === "CASH" ? change : null,
         receiptNumber,
+        tipAmount: tipValue > 0 ? tipValue : null,
       };
 
       addPayment(payment);
@@ -156,6 +169,12 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
     } finally {
       setLoading(false);
     }
+  };
+
+  const setTipByPercentage = (percentage: number) => {
+    setTipPercentage(percentage);
+    const calculatedTip = (total * percentage) / 100;
+    setTipAmount(calculatedTip.toFixed(2));
   };
 
   const handleCloseReceipt = () => {
@@ -214,8 +233,50 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         </View>
 
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total Amount</Text>
+          <Text style={styles.totalLabel}>Subtotal</Text>
           <Text style={styles.totalAmount}>{formatCurrency(total)}</Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>Add Tip</Text>
+        <View style={styles.tipButtons}>
+          {[10, 15, 18, 20].map((pct) => (
+            <TouchableOpacity
+              key={pct}
+              style={[styles.tipButton, tipPercentage === pct && styles.tipButtonActive]}
+              onPress={() => setTipByPercentage(pct)}
+            >
+              <Text style={[styles.tipButtonText, tipPercentage === pct && styles.tipButtonTextActive]}>
+                {pct}%
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.customTipBox}>
+          <Text style={styles.customTipLabel}>Custom Tip</Text>
+          <TextInput
+            style={styles.customTipInput}
+            placeholder="0.00"
+            placeholderTextColor={COLORS.muted}
+            keyboardType="decimal-pad"
+            value={tipAmount}
+            onChangeText={(text) => {
+              setTipAmount(text);
+              setTipPercentage(0);
+            }}
+          />
+        </View>
+
+        {tipValue > 0 && (
+          <View style={styles.tipSummary}>
+            <Text style={styles.tipSummaryLabel}>Tip Amount</Text>
+            <Text style={styles.tipSummaryValue}>{formatCurrency(tipValue)}</Text>
+          </View>
+        )}
+
+        <View style={[styles.totalCard, styles.finalTotalCard]}>
+          <Text style={styles.totalLabel}>Total with Tip</Text>
+          <Text style={styles.totalAmount}>{formatCurrency(finalTotal)}</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Payment Method</Text>
@@ -432,6 +493,81 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: "700",
     fontSize: 15,
+  },
+  tipButtons: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  tipButton: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  tipButtonActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  tipButtonText: {
+    color: COLORS.text,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  tipButtonTextActive: {
+    color: "#fff",
+  },
+  customTipBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 16,
+  },
+  customTipLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.muted,
+    marginBottom: 8,
+  },
+  customTipInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 18,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tipSummary: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tipSummaryLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  tipSummaryValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.success,
+  },
+  finalTotalCard: {
+    backgroundColor: "rgba(249,115,22,0.08)",
+    borderColor: COLORS.accent,
   },
   footer: {
     padding: 20,

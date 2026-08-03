@@ -24,6 +24,7 @@ export interface PaymentRecord {
   change?: number | null;
   receiptNumber: string;
   createdAt: string;
+  tipAmount?: number | null;
 }
 
 interface PaymentState {
