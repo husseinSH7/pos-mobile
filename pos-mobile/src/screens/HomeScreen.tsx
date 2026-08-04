@@ -29,6 +29,12 @@ export default function HomeScreen({ navigation }: any) {
       screen: "Tables",
     },
     {
+      title: "Reservations",
+      description: "Manage reservations and waitlist",
+      icon: "RSV",
+      screen: "Reservations",
+    },
+    {
       title: "Orders",
       description: "View active and previous orders",
       icon: "ORD",

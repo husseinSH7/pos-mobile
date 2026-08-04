@@ -16,6 +16,7 @@ import ShiftScreen from "./src/screens/ShiftScreen";
 import PaymentScreen from "./src/screens/PaymentScreen";
 import PaymentHistoryScreen from "./src/screens/PaymentHistoryScreen";
 import SplitScreen from "./src/screens/SplitScreen";
+import ReservationsScreen from "./src/screens/ReservationsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -41,6 +42,7 @@ export default function App() {
             <Stack.Screen name="Payment" component={PaymentScreen} />
             <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
             <Stack.Screen name="Split" component={SplitScreen} />
+            <Stack.Screen name="Reservations" component={ReservationsScreen} />
           </>
         )}
       </Stack.Navigator>
