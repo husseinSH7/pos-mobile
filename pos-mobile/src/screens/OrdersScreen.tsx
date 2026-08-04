@@ -89,18 +89,19 @@ export default function OrdersScreen({ navigation }: any) {
   }, [recentOrders, fetchOrders]);
 
   const handleVoid = async (orderId: string) => {
-    Alert.alert(
+    Alert.prompt(
       "Void order",
-      "This will cancel the order and free the table. Are you sure?",
+      "Enter reason for voiding this order:",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Void",
           style: "destructive",
-          onPress: async () => {
+          onPress: async (reason) => {
             try {
-              await api.post(`/orders/${orderId}/void`, { reason: "Voided from POS" });
+              await api.post(`/orders/${orderId}/void`, { reason: reason || "Voided from POS" });
               fetchOrders();
+              Alert.alert("Success", "Order has been voided successfully.");
             } catch (error: any) {
               Alert.alert(
                 "Void failed",
@@ -109,7 +110,64 @@ export default function OrdersScreen({ navigation }: any) {
             }
           },
         },
-      ]
+      ],
+      "plain-text",
+      "",
+      "default"
+    );
+  };
+
+  const handleRefund = async (orderId: string, orderTotal: number) => {
+    Alert.prompt(
+      "Refund order",
+      "Enter refund amount:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Next",
+          onPress: (amountText) => {
+            const amount = parseFloat(amountText || "0");
+            if (isNaN(amount) || amount <= 0) {
+              Alert.alert("Invalid amount", "Please enter a valid refund amount.");
+              return;
+            }
+            if (amount > orderTotal) {
+              Alert.alert("Invalid amount", "Refund amount cannot exceed order total.");
+              return;
+            }
+
+            Alert.prompt(
+              "Refund reason",
+              "Enter reason for this refund:",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Refund",
+                  style: "destructive",
+                  onPress: async (reason) => {
+                    try {
+                      await api.post(`/orders/${orderId}/refund`, { amount, reason: reason || "Refund from POS" });
+                      fetchOrders();
+                      Alert.alert("Success", `Refund of $${amount.toFixed(2)} processed successfully.`);
+                    } catch (error: any) {
+                      Alert.alert(
+                        "Refund failed",
+                        error?.response?.data?.message || error?.message || "Could not process refund."
+                      );
+                    }
+                  },
+                },
+              ],
+              "plain-text",
+              "",
+              "default"
+            );
+          },
+        },
+      ],
+      "plain-text",
+      orderTotal.toFixed(2),
+      "decimal-pad"
     );
   };
 
@@ -239,6 +297,17 @@ export default function OrdersScreen({ navigation }: any) {
                   onPress={() => handleVoid(item.id)}
                 >
                   <Text style={styles.actionButtonText}>Void</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {item.status === "PAID" && (
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.refundButton]}
+                  onPress={() => handleRefund(item.id, Number(item.totalAmount || 0))}
+                >
+                  <Text style={styles.actionButtonText}>Refund</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -397,6 +466,9 @@ const styles = StyleSheet.create({
   },
   voidButton: {
     backgroundColor: "#DC2626",
+  },
+  refundButton: {
+    backgroundColor: "#B45309",
   },
   actionButtonText: {
     color: "#FFFFFF",

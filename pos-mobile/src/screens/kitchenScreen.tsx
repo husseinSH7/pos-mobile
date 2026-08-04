@@ -165,10 +165,16 @@ export default function KitchenScreen({ navigation }: any) {
   };
 
   const getUrgencyLevel = (createdAt: string, status: KitchenStatus) => {
-    if (status !== "PENDING") return "none";
+    if (status === "READY") return "none";
     const createdTime = new Date(createdAt).getTime();
     const now = Date.now();
     const elapsedMinutes = (now - createdTime) / (1000 * 60);
+    
+    if (status === "PREPARING") {
+      if (elapsedMinutes < 15) return "low";
+      if (elapsedMinutes < 25) return "medium";
+      return "high";
+    }
     
     if (elapsedMinutes < 10) return "low";
     if (elapsedMinutes < 20) return "medium";
@@ -190,6 +196,15 @@ export default function KitchenScreen({ navigation }: any) {
       case "medium": return "#F59E0B";
       case "high": return "#DC2626";
       default: return "#E2E8F0";
+    }
+  };
+
+  const getUrgencyTextColor = (urgency: string) => {
+    switch (urgency) {
+      case "low": return "#15803D";
+      case "medium": return "#B45309";
+      case "high": return "#B91C1C";
+      default: return "#475569";
     }
   };
 
@@ -262,6 +277,7 @@ export default function KitchenScreen({ navigation }: any) {
                 const urgency = getUrgencyLevel(item.createdAt, item.status);
                 const urgencyColor = getUrgencyColor(urgency);
                 const urgencyBorderColor = getUrgencyBorderColor(urgency);
+                const urgencyTextColor = getUrgencyTextColor(urgency);
 
                 return (
                   <View style={[styles.ticketCard, { backgroundColor: urgencyColor, borderColor: urgencyBorderColor }]}>
@@ -270,14 +286,14 @@ export default function KitchenScreen({ navigation }: any) {
                         #{item.order.orderNumber}
                       </Text>
 
-                      <View style={styles.timingBadge}>
-                        <Text style={[styles.timingText, urgency === "high" && styles.urgentTiming]}>
+                      <View style={[styles.timingBadge, urgency === "high" && styles.urgentTimingBadge]}>
+                        <Text style={[styles.timingText, { color: urgencyTextColor }]}>
                           {getElapsedTime(item.createdAt)}
                         </Text>
                       </View>
                     </View>
 
-                    <Text style={styles.orderType}>
+                    <Text style={[styles.orderType, { color: urgencyTextColor }]}>
                       {item.order.orderType.replace("_", " ")}
                     </Text>
 
@@ -308,7 +324,7 @@ export default function KitchenScreen({ navigation }: any) {
                           {orderItem.modifiers?.map((modifier, index) => (
                             <Text
                               key={`${modifier.nameSnapshot}-${index}`}
-                              style={styles.modifierText}
+                              style={[styles.modifierText, urgency === "high" && styles.urgentModifier]}
                             >
                               + {modifier.nameSnapshot}
                             </Text>
@@ -444,26 +460,29 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   orderNumber: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "900",
     color: "#0F172A",
   },
   timingBadge: {
     backgroundColor: "rgba(0,0,0,0.05)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
   },
   timingText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "800",
     color: "#64748B",
+  },
+  urgentTimingBadge: {
+    backgroundColor: "#FEE2E2",
   },
   urgentTiming: {
     color: "#DC2626",
   },
   orderType: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
     color: "#F97316",
     marginTop: 4,
@@ -478,10 +497,11 @@ const styles = StyleSheet.create({
   },
   itemBlock: {
     backgroundColor: "#FFFFFF",
-    padding: 10,
+    padding: 12,
     borderRadius: 14,
   },
   itemName: {
+    fontSize: 18,
     fontWeight: "900",
     color: "#0F172A",
   },
@@ -508,8 +528,12 @@ const styles = StyleSheet.create({
   modifierText: {
     marginTop: 4,
     color: "#64748B",
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
+  },
+  urgentModifier: {
+    color: "#B91C1C",
+    fontWeight: "900",
   },
   actionButton: {
     marginTop: 14,

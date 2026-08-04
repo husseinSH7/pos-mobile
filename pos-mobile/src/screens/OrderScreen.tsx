@@ -834,27 +834,38 @@ const styles = StyleSheet.create({
   },
   quickModifiersScroll: {
     flexDirection: "row",
-    gap: 8,
   },
-  quickModifierChip: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
+  quickModifierButton: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    minWidth: 80,
+    alignItems: "center",
   },
-  quickModifierChipActive: {
-    backgroundColor: "#F97316",
-    borderColor: "#F97316",
+  quickModifierButtonSelected: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#F59E0B",
   },
-  quickModifierText: {
-    fontSize: 12,
-    fontWeight: "600",
+  quickModifierButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
     color: "#475569",
   },
-  quickModifierTextActive: {
-    color: "#FFFFFF",
+  quickModifierButtonTextSelected: {
+    color: "#92400E",
+  },
+  quickModifierButtonPrice: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748B",
+    marginTop: 2,
+  },
+  quickModifierButtonPriceSelected: {
+    color: "#B45309",
   },
   orderTypeRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   orderTypeButton: {
@@ -898,6 +909,18 @@ const styles = StyleSheet.create({
   },
   courseButtonTextActive: {
     color: "#FFFFFF",
+  },
+  quickModifiersSection: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  quickModifiersTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 8,
   },
   cartList: { flex: 1 },
   emptyCart: {
