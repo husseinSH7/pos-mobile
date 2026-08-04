@@ -5,10 +5,12 @@ const API_BASE_URL =
   Constants.expoConfig?.extra?.API_URL ||
   "http://192.168.1.12:4000";
 
-// The restaurant_POS Express app mounts all routes under /api
-const API_ROOT = API_BASE_URL.endsWith("/api")
+// The restaurant_POS Express app mounts all routes under /api/v1
+const API_ROOT = API_BASE_URL.endsWith("/api/v1")
   ? API_BASE_URL
-  : `${API_BASE_URL}/api`;
+  : API_BASE_URL.endsWith("/api")
+  ? `${API_BASE_URL}/v1`
+  : `${API_BASE_URL}/api/v1`;
 
 let authToken: string | null = null;
 
