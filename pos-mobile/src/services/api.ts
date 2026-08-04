@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 
 const API_BASE_URL =
   Constants.expoConfig?.extra?.API_URL ||
-  "http://192.168.1.12:4000";
+  "http://192.168.1.8:4000";
 
 // The restaurant_POS Express app mounts all routes under /api/v1
 const API_ROOT = API_BASE_URL.endsWith("/api/v1")
