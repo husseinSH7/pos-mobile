@@ -3,6 +3,7 @@ import { setAuthToken } from "../services/api";
 import { initializeWebSocket, disconnectWebSocket } from "../services/websocket";
 import { useRealtimeStore } from "./realtimeStore";
 import { initializeNetworkMonitoring } from "../services/network";
+import { secureStorage } from "../services/secureStorage";
 
 export interface User {
   id: string;
@@ -14,18 +15,26 @@ export interface User {
 interface AuthState {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User, token: string, refreshToken?: string) => void;
   logout: () => void;
+  initializeAuth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
+  refreshToken: null,
   isAuthenticated: false,
 
-  login: (user, token) => {
+  login: async (user, token, refreshToken) => {
     setAuthToken(token);
+    
+    // Save tokens to secure storage
+    await secureStorage.saveTokens(token, refreshToken || '');
+    await secureStorage.saveUser(user);
+    await secureStorage.saveRestaurantId(user.restaurantId);
     
     // Initialize WebSocket connection
     initializeWebSocket(token);
@@ -39,12 +48,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       user,
       token,
+      refreshToken: refreshToken || null,
       isAuthenticated: true,
     });
   },
 
-  logout: () => {
+  logout: async () => {
     setAuthToken(null);
+    
+    // Clear secure storage
+    await secureStorage.clearAll();
     
     // Disconnect WebSocket
     disconnectWebSocket();
@@ -55,7 +68,39 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
     });
+  },
+
+  initializeAuth: async () => {
+    try {
+      const token = await secureStorage.getAccessToken();
+      const refreshToken = await secureStorage.getRefreshToken();
+      const user = await secureStorage.getUser();
+      const restaurantId = await secureStorage.getRestaurantId();
+
+      if (token && user) {
+        setAuthToken(token);
+        
+        // Initialize WebSocket connection
+        initializeWebSocket(token);
+        
+        // Connect realtime store
+        useRealtimeStore.getState().connect();
+
+        // Initialize network monitoring
+        initializeNetworkMonitoring();
+
+        set({
+          user,
+          token,
+          refreshToken,
+          isAuthenticated: true,
+        });
+      }
+    } catch (error) {
+      console.error('Error initializing auth:', error);
+    }
   },
 }));
