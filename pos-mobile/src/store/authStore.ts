@@ -4,6 +4,7 @@ import { initializeWebSocket, disconnectWebSocket } from "../services/websocket"
 import { useRealtimeStore } from "./realtimeStore";
 import { initializeNetworkMonitoring } from "../services/network";
 import { secureStorage } from "../services/secureStorage";
+import { registerForPushNotificationsAsync } from "../services/notifications";
 
 export interface User {
   id: string;
@@ -35,6 +36,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await secureStorage.saveTokens(token, refreshToken || '');
     await secureStorage.saveUser(user);
     await secureStorage.saveRestaurantId(user.restaurantId);
+    
+    // Register for push notifications
+    const pushToken = await registerForPushNotificationsAsync();
+    if (pushToken) {
+      // TODO: Send push token to backend
+      console.log('Push token registered:', pushToken);
+    }
     
     // Initialize WebSocket connection
     initializeWebSocket(token);
@@ -82,6 +90,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (token && user) {
         setAuthToken(token);
+        
+        // Register for push notifications
+        const pushToken = await registerForPushNotificationsAsync();
+        if (pushToken) {
+          // TODO: Send push token to backend
+          console.log('Push token registered:', pushToken);
+        }
         
         // Initialize WebSocket connection
         initializeWebSocket(token);

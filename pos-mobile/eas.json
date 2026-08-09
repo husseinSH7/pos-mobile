@@ -1,0 +1,57 @@
+{
+  "cli": {
+    "version": ">= 7.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium",
+        "bundleIdentifier": "com.restaurantpos.dev"
+      },
+      "android": {
+        "resourceClass": "medium",
+        "package": "com.restaurantpos.dev"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium",
+        "bundleIdentifier": "com.restaurantpos.preview"
+      },
+      "android": {
+        "resourceClass": "medium",
+        "package": "com.restaurantpos.preview"
+      }
+    },
+    "production": {
+      "ios": {
+        "resourceClass": "m-medium",
+        "bundleIdentifier": "com.restaurantpos.app",
+        "autoIncrement": true
+      },
+      "android": {
+        "resourceClass": "medium",
+        "package": "com.restaurantpos.app",
+        "autoIncrement": true
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "your-app-store-connect-app-id",
+        "appleTeamId": "your-apple-team-id",
+        "appName": "Restaurant POS"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "production",
+        "status": "completed"
+      }
+    }
+  }
+}

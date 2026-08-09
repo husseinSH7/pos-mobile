@@ -73,8 +73,11 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 async function initializeDatabase(): Promise<void> {
   if (!db) throw new Error('Database not initialized');
 
-  // Enable foreign keys
+  // Enable foreign keys and WAL mode for better concurrency
   await db.execAsync('PRAGMA foreign_keys = ON;');
+  await db.execAsync('PRAGMA journal_mode = WAL;');
+  await db.execAsync('PRAGMA synchronous = NORMAL;');
+  await db.execAsync('PRAGMA cache_size = -64000;'); // 64MB cache
 
   // Create offline orders table
   await db.execAsync(`

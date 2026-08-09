@@ -18,8 +18,9 @@ import { isOnline } from "../services/network";
 import { COLORS } from "../utils/colors";
 import { formatCurrency } from "../utils/currency";
 import ReceiptModal from "../components/ReceiptModal";
+import { printerService, type ReceiptData } from "../services/printer";
 
-type PaymentMethod = "CASH" | "CARD" | "MIXED";
+type PaymentMethod = "CASH" | "CARD" | "GIFT_CARD" | "MIXED";
 
 interface PaymentScreenProps {
   navigation: any;
@@ -43,6 +44,9 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
   const [tipPercentage, setTipPercentage] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState<PaymentRecord | null>(null);
+  const [giftCardNumber, setGiftCardNumber] = useState("");
+  const [giftCardBalance, setGiftCardBalance] = useState<number | null>(null);
+  const [giftCardLoading, setGiftCardLoading] = useState(false);
 
   const subtotal = useMemo(() => {
     if (split) return Number(split.subtotal || 0);
@@ -108,7 +112,7 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
   const handlePay = async () => {
     if (!selectedMethod) {
-      Alert.alert("Select payment method", "Please choose Cash, Card or Mixed.");
+      Alert.alert("Select payment method", "Please choose Cash, Card, Gift Card or Mixed.");
       return;
     }
 
@@ -116,6 +120,17 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
       const value = parseFloat(tendered || "0");
       if (value < finalTotal) {
         Alert.alert("Insufficient amount", "The tendered amount must cover the total with tip.");
+        return;
+      }
+    }
+
+    if (selectedMethod === "GIFT_CARD") {
+      if (!giftCardNumber) {
+        Alert.alert("Gift card required", "Please enter a gift card number.");
+        return;
+      }
+      if (giftCardBalance === null || giftCardBalance < finalTotal) {
+        Alert.alert("Insufficient gift card balance", "The gift card balance is insufficient for this payment.");
         return;
       }
     }
@@ -130,6 +145,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
           paymentMethod: selectedMethod,
           amountTendered: selectedMethod === "CASH" ? parseFloat(tendered) : undefined,
           tipAmount: tipValue > 0 ? tipValue : undefined,
+          giftCardNumber: selectedMethod === "GIFT_CARD" ? giftCardNumber : undefined,
+          giftCardAmount: selectedMethod === "GIFT_CARD" ? finalTotal : undefined,
         });
       }
 
@@ -147,10 +164,12 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         tax,
         total: finalTotal,
         paymentMethod: selectedMethod,
-        amountTendered: selectedMethod === "CASH" ? parseFloat(tendered || "0") : null,
-        change: selectedMethod === "CASH" ? change : null,
+        amountTendered: selectedMethod === "CASH" ? parseFloat(tendered) : undefined,
+        change: selectedMethod === "CASH" ? change : undefined,
         receiptNumber,
-        tipAmount: tipValue > 0 ? tipValue : null,
+        tipAmount: tipValue > 0 ? tipValue : undefined,
+        giftCardNumber: selectedMethod === "GIFT_CARD" ? giftCardNumber : undefined,
+        giftCardAmount: selectedMethod === "GIFT_CARD" ? finalTotal : undefined,
       };
 
       addPayment(payment);
@@ -186,13 +205,52 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
     }
   };
 
-  const handlePrint = () => {
-    Alert.alert("Print Receipt", `Receipt ${receiptPayment?.receiptNumber} sent to printer.`);
+  const handlePrint = async () => {
+    if (!receiptPayment) return;
+
+    try {
+      const receiptData: ReceiptData = {
+        restaurantName: "Restaurant POS", // TODO: Get from settings
+        restaurantAddress: "123 Main St", // TODO: Get from settings
+        restaurantPhone: "(555) 123-4567", // TODO: Get from settings
+        orderNumber: receiptPayment.orderNumber || 0,
+        tableName: receiptPayment.tableName || undefined,
+        orderType: receiptPayment.tableName ? 'DINE_IN' : 'TAKEOUT',
+        date: new Date(receiptPayment.createdAt).toLocaleString(),
+        serverName: "Server", // TODO: Get from auth store
+        items: receiptPayment.items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          modifiers: item.modifiers,
+        })),
+        subtotal: receiptPayment.subtotal,
+        tax: receiptPayment.tax,
+        total: receiptPayment.total,
+        tip: receiptPayment.tipAmount || undefined,
+        paymentMethod: receiptPayment.paymentMethod,
+        tendered: receiptPayment.amountTendered || undefined,
+        change: receiptPayment.change || undefined,
+      };
+
+      const success = await printerService.printReceipt(receiptData);
+      
+      if (success) {
+        Alert.alert("Print Success", "Receipt sent to printer successfully.");
+      } else {
+        Alert.alert("Print Failed", "Could not print receipt. Please check printer connection.");
+      }
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+      Alert.alert("Print Error", "An error occurred while printing the receipt.");
+    }
   };
 
   const methods: { key: PaymentMethod; label: string; icon: string }[] = [
     { key: "CASH", label: "Cash", icon: "💵" },
     { key: "CARD", label: "Card", icon: "💳" },
+    { key: "GIFT_CARD", label: "Gift Card", icon: "🎁" },
     { key: "MIXED", label: "Mixed", icon: "🔀" },
   ];
 
@@ -309,17 +367,70 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
             <Text style={styles.sectionTitle}>Amount Tendered</Text>
             <TextInput
               style={styles.input}
-              placeholder="0.00"
-              placeholderTextColor={COLORS.muted}
-              keyboardType="decimal-pad"
+              keyboardType="numeric"
               value={tendered}
               onChangeText={setTendered}
+              placeholder="0.00"
+              placeholderTextColor="#9ca3af"
             />
-            {tendered ? (
-              <Text style={styles.changeText}>
-                Change: {formatCurrency(change)}
+            {change > 0 && (
+              <View style={styles.changeRow}>
+                <Text style={styles.changeLabel}>Change Due</Text>
+                <Text style={styles.changeValue}>{formatCurrency(change)}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {selectedMethod === "GIFT_CARD" && (
+          <View style={styles.tenderedBox}>
+            <Text style={styles.sectionTitle}>Gift Card Number</Text>
+            <TextInput
+              style={styles.input}
+              value={giftCardNumber}
+              onChangeText={setGiftCardNumber}
+              placeholder="Enter gift card number"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="characters"
+            />
+            <TouchableOpacity
+              style={styles.checkBalanceBtn}
+              onPress={async () => {
+                if (!giftCardNumber) {
+                  Alert.alert("Error", "Please enter a gift card number");
+                  return;
+                }
+                setGiftCardLoading(true);
+                try {
+                  // Mock API call - replace with actual API
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  setGiftCardBalance(50); // Mock balance
+                } catch (error) {
+                  Alert.alert("Error", "Failed to check gift card balance");
+                  setGiftCardBalance(null);
+                } finally {
+                  setGiftCardLoading(false);
+                }
+              }}
+              disabled={giftCardLoading}
+            >
+              {giftCardLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.checkBalanceBtnText}>Check Balance</Text>
+              )}
+            </TouchableOpacity>
+            {giftCardBalance !== null && (
+              <View style={styles.balanceRow}>
+                <Text style={styles.balanceLabel}>Available Balance</Text>
+                <Text style={styles.balanceValue}>{formatCurrency(giftCardBalance)}</Text>
+              </View>
+            )}
+            {giftCardBalance !== null && giftCardBalance < finalTotal && (
+              <Text style={styles.insufficientBalanceText}>
+                Insufficient balance. Need {formatCurrency(finalTotal - giftCardBalance)} more.
               </Text>
-            ) : null}
+            )}
           </View>
         )}
 
@@ -456,11 +567,51 @@ const styles = StyleSheet.create({
   methodLabelSelected: { color: COLORS.accent },
   tenderedBox: {
     backgroundColor: COLORS.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 16,
+  },
+  changeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  changeLabel: { fontSize: 14, color: COLORS.muted },
+  changeValue: { fontSize: 18, fontWeight: "700", color: COLORS.success },
+  checkBalanceBtn: {
+    backgroundColor: "#f97316",
+    borderRadius: 8,
+    padding: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  checkBalanceBtnText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  balanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  balanceLabel: { fontSize: 14, color: COLORS.muted },
+  balanceValue: { fontSize: 18, fontWeight: "700", color: COLORS.text },
+  insufficientBalanceText: {
+    fontSize: 14,
+    color: "#ef4444",
+    marginTop: 8,
+    fontWeight: "500",
   },
   input: {
     backgroundColor: COLORS.bg,

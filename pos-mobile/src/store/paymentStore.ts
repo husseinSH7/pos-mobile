@@ -19,12 +19,14 @@ export interface PaymentRecord {
   subtotal: number;
   tax: number;
   total: number;
-  paymentMethod: "CASH" | "CARD" | "MIXED";
+  paymentMethod: "CASH" | "CARD" | "GIFT_CARD" | "MIXED";
   amountTendered?: number | null;
   change?: number | null;
   receiptNumber: string;
   createdAt: string;
   tipAmount?: number | null;
+  giftCardNumber?: string | null;
+  giftCardAmount?: number | null;
 }
 
 interface PaymentState {

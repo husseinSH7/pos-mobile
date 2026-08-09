@@ -4,6 +4,7 @@ const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'user_data';
 const RESTAURANT_ID_KEY = 'restaurant_id';
+const PIN_KEY = 'user_pin';
 
 export const secureStorage = {
   async saveTokens(accessToken: string, refreshToken: string): Promise<void> {
@@ -77,8 +78,36 @@ export const secureStorage = {
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
       await SecureStore.deleteItemAsync(USER_KEY);
       await SecureStore.deleteItemAsync(RESTAURANT_ID_KEY);
+      await SecureStore.deleteItemAsync(PIN_KEY);
     } catch (error) {
       console.error('Error clearing secure storage:', error);
+      throw error;
+    }
+  },
+
+  async savePIN(pin: string): Promise<void> {
+    try {
+      await SecureStore.setItemAsync(PIN_KEY, pin);
+    } catch (error) {
+      console.error('Error saving PIN:', error);
+      throw error;
+    }
+  },
+
+  async getPIN(): Promise<string | null> {
+    try {
+      return await SecureStore.getItemAsync(PIN_KEY);
+    } catch (error) {
+      console.error('Error getting PIN:', error);
+      return null;
+    }
+  },
+
+  async deletePIN(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(PIN_KEY);
+    } catch (error) {
+      console.error('Error deleting PIN:', error);
       throw error;
     }
   },
