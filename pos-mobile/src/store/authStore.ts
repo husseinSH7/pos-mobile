@@ -18,8 +18,8 @@ interface AuthState {
   token: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string, refreshToken?: string) => void;
-  logout: () => void;
+  login: (user: User, token: string, refreshToken?: string) => Promise<void>;
+  logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
 }
 
@@ -30,29 +30,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
 
   login: async (user, token, refreshToken) => {
+    // Set the auth token for API requests immediately
     setAuthToken(token);
-    
-    // Save tokens to secure storage
-    await secureStorage.saveTokens(token, refreshToken || '');
-    await secureStorage.saveUser(user);
-    await secureStorage.saveRestaurantId(user.restaurantId);
-    
-    // Register for push notifications
-    const pushToken = await registerForPushNotificationsAsync();
-    if (pushToken) {
-      // TODO: Send push token to backend
-      console.log('Push token registered:', pushToken);
+
+    // Side effects – web/native differences are caught here to avoid blocking login
+    try {
+      await secureStorage.saveTokens(token, refreshToken || '');
+      await secureStorage.saveUser(user);
+      await secureStorage.saveRestaurantId(user.restaurantId);
+    } catch (error) {
+      console.warn("secureStorage failed (likely web):", error);
     }
-    
-    // Initialize WebSocket connection
-    initializeWebSocket(token);
-    
-    // Connect realtime store
-    useRealtimeStore.getState().connect();
 
-    // Initialize network monitoring
-    initializeNetworkMonitoring();
+    try {
+      const pushToken = await registerForPushNotificationsAsync();
+      if (pushToken) {
+        console.log("Push token registered:", pushToken);
+        // TODO: Send push token to backend
+      }
+    } catch (error) {
+      console.warn("Push notifications failed:", error);
+    }
 
+    try {
+      initializeWebSocket(token);
+      useRealtimeStore.getState().connect();
+    } catch (error) {
+      console.warn("WebSocket initialization failed:", error);
+    }
+
+    try {
+      initializeNetworkMonitoring();
+    } catch (error) {
+      console.warn("Network monitoring failed:", error);
+    }
+
+    // Always update state – this is what triggers navigation to home
     set({
       user,
       token,
@@ -63,15 +76,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     setAuthToken(null);
-    
-    // Clear secure storage
-    await secureStorage.clearAll();
-    
-    // Disconnect WebSocket
-    disconnectWebSocket();
-    
-    // Disconnect realtime store
-    useRealtimeStore.getState().disconnect();
+
+    try {
+      await secureStorage.clearAll();
+    } catch (error) {
+      console.warn("clearAll failed:", error);
+    }
+
+    try {
+      disconnectWebSocket();
+      useRealtimeStore.getState().disconnect();
+    } catch (error) {
+      console.warn("disconnect failed:", error);
+    }
 
     set({
       user: null,
@@ -86,26 +103,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const token = await secureStorage.getAccessToken();
       const refreshToken = await secureStorage.getRefreshToken();
       const user = await secureStorage.getUser();
-      const restaurantId = await secureStorage.getRestaurantId();
 
       if (token && user) {
         setAuthToken(token);
-        
-        // Register for push notifications
-        const pushToken = await registerForPushNotificationsAsync();
-        if (pushToken) {
-          // TODO: Send push token to backend
-          console.log('Push token registered:', pushToken);
-        }
-        
-        // Initialize WebSocket connection
-        initializeWebSocket(token);
-        
-        // Connect realtime store
-        useRealtimeStore.getState().connect();
 
-        // Initialize network monitoring
-        initializeNetworkMonitoring();
+        try {
+          const pushToken = await registerForPushNotificationsAsync();
+          if (pushToken) console.log("Push token registered:", pushToken);
+        } catch (e) { console.warn(e); }
+
+        try {
+          initializeWebSocket(token);
+          useRealtimeStore.getState().connect();
+        } catch (e) { console.warn(e); }
+
+        try {
+          initializeNetworkMonitoring();
+        } catch (e) { console.warn(e); }
 
         set({
           user,
@@ -115,7 +129,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
       }
     } catch (error) {
-      console.error('Error initializing auth:', error);
+      console.error("Error initializing auth:", error);
     }
   },
 }));

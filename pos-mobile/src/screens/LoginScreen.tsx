@@ -53,7 +53,7 @@ export default function LoginScreen() {
         restaurantId: res.data.restaurantId,
       };
 
-      login(mappedUser, res.data.token);
+      await login(mappedUser, res.data.accessToken, res.data.refreshToken);
     } catch (error: any) {
       Vibration.vibrate(300);
       setShake(true);
