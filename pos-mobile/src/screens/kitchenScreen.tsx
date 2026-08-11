@@ -55,7 +55,7 @@ export default function KitchenScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const kitchenTickets = useRealtimeStore((s) => s.kitchenTickets);
 
   const fetchTickets = useCallback(async () => {
@@ -81,19 +81,17 @@ export default function KitchenScreen({ navigation }: any) {
     if (kitchenTickets.length === 0) return;
 
     const latestTicket = kitchenTickets[kitchenTickets.length - 1];
-    
+
     setTickets((prevTickets) => {
       const existingIndex = prevTickets.findIndex(t => t.id === latestTicket.ticketId);
-      
+
       if (existingIndex >= 0) {
-        // Update existing ticket
         return prevTickets.map((ticket) =>
           ticket.id === latestTicket.ticketId
             ? { ...ticket, status: latestTicket.status as KitchenStatus }
             : ticket
         );
       } else {
-        // This is a new ticket, we need to fetch the full data
         fetchTickets();
         return prevTickets;
       }
@@ -110,8 +108,7 @@ export default function KitchenScreen({ navigation }: any) {
     nextStatus: KitchenStatus
   ) => {
     const previousStatus = tickets.find(t => t.id === ticketId)?.status;
-    
-    // Optimistic update
+
     setTickets((prev) =>
       prev.map((ticket) =>
         ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket
@@ -123,7 +120,6 @@ export default function KitchenScreen({ navigation }: any) {
         status: nextStatus,
       });
     } catch (error: any) {
-      // Rollback on error
       if (previousStatus) {
         setTickets((prev) =>
           prev.map((ticket) =>
@@ -169,13 +165,13 @@ export default function KitchenScreen({ navigation }: any) {
     const createdTime = new Date(createdAt).getTime();
     const now = Date.now();
     const elapsedMinutes = (now - createdTime) / (1000 * 60);
-    
+
     if (status === "PREPARING") {
       if (elapsedMinutes < 15) return "low";
       if (elapsedMinutes < 25) return "medium";
       return "high";
     }
-    
+
     if (elapsedMinutes < 10) return "low";
     if (elapsedMinutes < 20) return "medium";
     return "high";
@@ -212,7 +208,7 @@ export default function KitchenScreen({ navigation }: any) {
     const createdTime = new Date(createdAt).getTime();
     const now = Date.now();
     const elapsedMinutes = Math.floor((now - createdTime) / (1000 * 60));
-    
+
     if (elapsedMinutes < 1) return "Just now";
     if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
     const hours = Math.floor(elapsedMinutes / 60);
@@ -244,10 +240,12 @@ export default function KitchenScreen({ navigation }: any) {
         </View>
       </View>
 
+      {/* ✅ Horizontal ScrollView that fills remaining space */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.columnsWrapper}
+        style={styles.scrollView}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -263,15 +261,13 @@ export default function KitchenScreen({ navigation }: any) {
               </View>
             </View>
 
+            {/* ✅ Independent vertical FlatList */}
             <FlatList
               data={groupedTickets[status]}
               keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              ListEmptyComponent={
-                <View style={styles.emptyColumn}>
-                  <Text style={styles.emptyText}>No tickets</Text>
-                </View>
-              }
+              style={styles.ticketList}
+              contentContainerStyle={styles.ticketListContent}
+              showsVerticalScrollIndicator={true}
               renderItem={({ item }) => {
                 const nextStatus = getNextStatus(item.status);
                 const urgency = getUrgencyLevel(item.createdAt, item.status);
@@ -350,6 +346,11 @@ export default function KitchenScreen({ navigation }: any) {
                   </View>
                 );
               }}
+              ListEmptyComponent={
+                <View style={styles.emptyColumn}>
+                  <Text style={styles.emptyText}>No tickets</Text>
+                </View>
+              }
             />
           </View>
         ))}
@@ -363,22 +364,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F8FAFC",
   },
-  centered: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    color: "#64748B",
-  },
   header: {
     paddingHorizontal: 20,
     paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
+    backgroundColor: "#F8FAFC",
   },
   backButton: {
     backgroundColor: "#FFFFFF",
@@ -401,10 +393,14 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 2,
   },
+  scrollView: {
+    flex: 1, // fills remaining space
+  },
   columnsWrapper: {
     paddingHorizontal: 14,
     paddingBottom: 24,
     gap: 12,
+    flexGrow: 1, // ensures columns stretch to full height
   },
   column: {
     width: 300,
@@ -413,6 +409,8 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    flex: 1, // take full height of ScrollView
+    // Add a max-height to avoid overflow if needed, but flex handles it
   },
   columnHeader: {
     flexDirection: "row",
@@ -437,10 +435,17 @@ const styles = StyleSheet.create({
     color: "#F97316",
     fontWeight: "900",
   },
+  ticketList: {
+    flex: 1, // fills remaining vertical space in column
+  },
+  ticketListContent: {
+    paddingBottom: 20,
+  },
   emptyColumn: {
-    minHeight: 120,
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 120,
   },
   emptyText: {
     color: "#94A3B8",
@@ -478,9 +483,6 @@ const styles = StyleSheet.create({
   urgentTimingBadge: {
     backgroundColor: "#FEE2E2",
   },
-  urgentTiming: {
-    color: "#DC2626",
-  },
   orderType: {
     fontSize: 14,
     fontWeight: "900",
@@ -491,19 +493,6 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontWeight: "800",
     marginBottom: 12,
-  },
-  itemsBox: {
-    gap: 10,
-  },
-  itemBlock: {
-    backgroundColor: "#FFFFFF",
-    padding: 12,
-    borderRadius: 14,
-  },
-  itemName: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#0F172A",
   },
   notesBadge: {
     backgroundColor: "#FEF3C7",
@@ -518,6 +507,19 @@ const styles = StyleSheet.create({
     color: "#92400E",
     fontWeight: "800",
     fontSize: 13,
+  },
+  itemsBox: {
+    gap: 10,
+  },
+  itemBlock: {
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    borderRadius: 14,
+  },
+  itemName: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
   },
   itemNoteText: {
     color: "#B45309",

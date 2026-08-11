@@ -12,7 +12,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  PanResponder,
 } from "react-native";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
@@ -526,6 +525,16 @@ export default function TablesScreen({ navigation }: any) {
                         {isOccupied ? "Open order" : "Tap to start order"}
                       </Text>
                     </View>
+
+                    {/* Pay button for occupied tables */}
+                    {isOccupied && item.openOrderId && (
+                      <TouchableOpacity
+                        style={styles.payButton}
+                        onPress={() => navigation.navigate("Payment", { orderId: item.openOrderId })}
+                      >
+                        <Text style={styles.payButtonText}>Pay</Text>
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
               </TouchableOpacity>
@@ -548,6 +557,7 @@ export default function TablesScreen({ navigation }: any) {
           }
         />
       ) : (
+        // ✅ FIXED: removed onTransfer and onOpenTransferModal props
         <FloorPlanView
           tables={filteredTables}
           onTablePress={handleTablePress}
@@ -555,8 +565,6 @@ export default function TablesScreen({ navigation }: any) {
           getTableStatusColor={getTableStatusColor}
           getTableStatusTextColor={getTableStatusTextColor}
           getTableStatusLabel={getTableStatusLabel}
-          onTransfer={setSelectedTableForTransfer}
-          onOpenTransferModal={() => setTransferModalVisible(true)}
         />
       )}
 
@@ -767,8 +775,6 @@ function FloorPlanView({
   getTableStatusColor,
   getTableStatusTextColor,
   getTableStatusLabel,
-  onTransfer,
-  onOpenTransferModal,
 }: {
   tables: Table[];
   onTablePress: (table: Table) => void;
@@ -776,8 +782,6 @@ function FloorPlanView({
   getTableStatusColor: (status?: string) => string;
   getTableStatusTextColor: (status?: string) => string;
   getTableStatusLabel: (status?: string) => string;
-  onTransfer?: (table: Table) => void;
-  onOpenTransferModal?: () => void;
 }) {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 
@@ -1145,6 +1149,18 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontSize: 13,
     fontWeight: "700",
+  },
+  payButton: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  payButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
   },
   emptyState: {
     flex: 1,

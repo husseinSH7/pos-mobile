@@ -79,7 +79,11 @@ export default function OrderScreen({ navigation }: any) {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("ALL");
 
+  // Cart = new items (not yet sent to kitchen)
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Ordered items = already sent (read-only)
+  const [orderedItems, setOrderedItems] = useState<CartItem[]>([]);
+
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEOUT" | "DELIVERY">(
     "DINE_IN"
   );
@@ -95,31 +99,60 @@ export default function OrderScreen({ navigation }: any) {
   const [orderNotes, setOrderNotes] = useState("");
   const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
 
+  // Load menu
   useEffect(() => {
     loadMenu();
   }, []);
 
+  // Load existing order items into orderedItems (not cart)
+  useEffect(() => {
+    const loadExistingOrder = async () => {
+      if (activeTable.orderId) {
+        try {
+          const res = await api.get(`/orders/${activeTable.orderId}`);
+          const order = res.data;
+          const items = order.items.map((item: any) => ({
+            productId: item.productId,
+            name: item.product?.name || item.name || "Item",
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            modifiers: (item.modifiers || []).map((m: any) => ({
+              modifierOptionId: m.modifierOptionId,
+              name: m.nameSnapshot || m.name,
+              priceDelta: Number(m.priceDelta || 0),
+            })),
+            totalPrice: Number(item.totalPrice || 0),
+            course: item.course || null,
+          }));
+          setOrderedItems(items);
+          setOrderType(order.orderType || "DINE_IN");
+          setOrderNotes(order.notes || "");
+        } catch (error) {
+          console.error("Failed to load existing order", error);
+        }
+      }
+    };
+    if (!loading) {
+      loadExistingOrder();
+    }
+  }, [activeTable.orderId, loading]);
+
   const loadMenu = async () => {
     try {
       setError(null);
-      
       if (isOnline()) {
-        // Try to load from API
         const [catRes, prodRes] = await Promise.all([
           api.get("/menu/categories"),
           api.get("/menu/products?includeModifiers=true"),
         ]);
-
         setCategories(catRes.data);
         setProducts(prodRes.data);
       } else {
-        // Load from offline database
         if (user) {
           const [offlineCats, offlineProds] = await Promise.all([
             getOfflineCategories(user.restaurantId),
             getOfflineProducts(user.restaurantId),
           ]);
-
           setCategories(offlineCats);
           setProducts(offlineProds);
         } else {
@@ -139,14 +172,16 @@ export default function OrderScreen({ navigation }: any) {
     return products.filter((p) => p.categoryId === selectedCategoryId);
   }, [products, selectedCategoryId]);
 
-  const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+  // Subtotal = ordered + cart
+  const orderedSubtotal = orderedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+  const subtotal = orderedSubtotal + cartSubtotal;
   const tax = 0;
   const total = subtotal + tax;
 
   const productGroups: ModifierGroup[] =
     selectedProduct?.modifierGroups?.map((x) => x.modifierGroup) ?? [];
 
-  // Get top 5 most common modifiers across all products as quick toggles
   const allQuickModifiers = useMemo(() => {
     const modifierCounts = new Map<string, { option: ModifierOption; count: number }>();
     products.forEach(product => {
@@ -170,13 +205,11 @@ export default function OrderScreen({ navigation }: any) {
 
   const selectedProductTotal = useMemo(() => {
     if (!selectedProduct) return 0;
-
     const base = Number(selectedProduct.price);
     const modifiersTotal = Object.values(selectedModifiers)
       .flat()
       .reduce((sum, option) => sum + Number(option.priceDelta || 0), 0);
     const quickModifiersTotal = quickModifiers.reduce((sum, m) => sum + Number(m.priceDelta || 0), 0);
-
     return (base + modifiersTotal + quickModifiersTotal) * quantity;
   }, [selectedProduct, selectedModifiers, quickModifiers, quantity]);
 
@@ -192,13 +225,11 @@ export default function OrderScreen({ navigation }: any) {
   const openEditCartItem = (index: number) => {
     const item = cart[index];
     if (!item) return;
-
     const product = products.find((p) => p.id === item.productId);
     if (!product) {
       Alert.alert("Product not found", "This item can only be removed.");
       return;
     }
-
     const reconstructed: Record<string, ModifierOption[]> = {};
     product.modifierGroups?.forEach((group) => {
       const selected = group.modifierGroup.options.filter((option) =>
@@ -208,7 +239,6 @@ export default function OrderScreen({ navigation }: any) {
         reconstructed[group.modifierGroup.id] = selected;
       }
     });
-
     setSelectedProduct(product);
     setSelectedModifiers(reconstructed);
     setQuickModifiers([]);
@@ -239,16 +269,10 @@ export default function OrderScreen({ navigation }: any) {
   const toggleModifier = (group: ModifierGroup, option: ModifierOption) => {
     setSelectedModifiers((prev) => {
       const current = prev[group.id] ?? [];
-
       if (group.selectionType === "SINGLE") {
-        return {
-          ...prev,
-          [group.id]: [option],
-        };
+        return { ...prev, [group.id]: [option] };
       }
-
       const exists = current.some((x) => x.id === option.id);
-
       return {
         ...prev,
         [group.id]: exists
@@ -260,14 +284,12 @@ export default function OrderScreen({ navigation }: any) {
 
   const addSelectedProductToCart = () => {
     if (!selectedProduct) return;
-
     for (const group of productGroups) {
       if (group.isRequired && !(selectedModifiers[group.id]?.length > 0)) {
         Alert.alert("Required option", `Please select ${group.name}.`);
         return;
       }
     }
-
     const modifiers = [
       ...Object.values(selectedModifiers)
         .flat()
@@ -282,10 +304,8 @@ export default function OrderScreen({ navigation }: any) {
         priceDelta: Number(option.priceDelta || 0),
       })),
     ];
-
     const unitPrice = Number(selectedProduct.price);
     const modifierTotal = modifiers.reduce((sum, m) => sum + m.priceDelta, 0);
-
     const cartItem: CartItem = {
       productId: selectedProduct.id,
       name: selectedProduct.name,
@@ -295,7 +315,6 @@ export default function OrderScreen({ navigation }: any) {
       course: selectedCourse || null,
       totalPrice: (unitPrice + modifierTotal) * quantity,
     };
-
     if (editingCartIndex !== null) {
       setCart((prev) => {
         const next = [...prev];
@@ -320,79 +339,52 @@ export default function OrderScreen({ navigation }: any) {
 
     setSubmitting(true);
 
-    const orderData = {
-      tableId: activeTable?.tableId ?? null,
-      orderType,
-      notes: orderNotes || null,
-      subtotal,
-      taxAmount: tax,
-      totalAmount: total,
-      items: cart.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.totalPrice,
-        modifiers: item.modifiers.map((m) => ({
-          modifierOptionId: m.modifierOptionId,
-          nameSnapshot: m.name,
-          priceDelta: m.priceDelta,
-        })),
+    const newItems = cart.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      modifiers: item.modifiers.map((m) => ({
+        modifierOptionId: m.modifierOptionId,
+        nameSnapshot: m.name,
+        priceDelta: m.priceDelta,
       })),
-    };
+    }));
 
     try {
-      if (isOnline()) {
-        // Online: Send to backend
-        const response = await api.post("/orders", orderData);
-        const createdOrder = response.data;
+      let orderId = activeTable.orderId;
+      let orderNumber = activeTable.orderNumber;
 
+      if (orderId) {
+        // Append new items to existing order (PUT)
+        await api.put(`/orders/${orderId}/items`, { items: newItems });
+      } else {
+        // Create new order
+        const payload = {
+          tableId: activeTable.tableId || undefined,
+          orderType,
+          notes: orderNotes || undefined,
+          items: newItems,
+        };
+        const response = await api.post("/orders", payload);
+        orderId = response.data.id;
+        orderNumber = response.data.orderNumber;
         setActiveTableOrder({
           ...activeTable,
-          orderId: createdOrder.id,
-          orderNumber: createdOrder.orderNumber,
+          orderId,
+          orderNumber,
         });
-
-        setCart([]);
-        setOrderNotes("");
-        navigation.navigate("Payment", {
-          order: createdOrder,
-          orderData,
-        });
-        return;
-      } else {
-        // Offline: Save locally
-        if (!user) {
-          throw new Error("User not authenticated");
-        }
-
-        await saveOfflineOrder({
-          restaurantId: user.restaurantId,
-          userId: user.id,
-          tableId: activeTable?.tableId || null,
-          customerId: null,
-          orderType: orderData.orderType,
-          subtotal: orderData.subtotal,
-          taxAmount: orderData.taxAmount,
-          totalAmount: orderData.totalAmount,
-          items: JSON.stringify(orderData.items),
-        });
-
-        Alert.alert(
-          "Offline Order Saved",
-          "Order will be synced when you're back online."
-        );
-        
-        // Refresh sync status
-        await loadSyncStatus();
       }
 
+      // Clear only the cart (new items), keep orderedItems as read‑only
       setCart([]);
       setOrderNotes("");
       navigation.navigate("Tables");
     } catch (error: any) {
+      console.error("❌ Send to kitchen error:", error);
       Alert.alert(
         "Error",
-        error?.response?.data?.message || error?.message || "Failed to create order."
+        error?.response?.data?.message || "Failed to send order."
       );
     } finally {
       setSubmitting(false);
@@ -416,7 +408,6 @@ export default function OrderScreen({ navigation }: any) {
         >
           <Text style={styles.backText}>← Tables</Text>
         </TouchableOpacity>
-
         <View>
           <Text style={styles.headerTitle}>Sales</Text>
           <Text style={styles.headerSubtitle}>
@@ -476,18 +467,43 @@ export default function OrderScreen({ navigation }: any) {
             </ScrollView>
           </View>
 
+          {/* ─── Ordered items (already sent) ─── */}
+          {orderedItems.length > 0 && (
+            <View style={styles.orderedSection}>
+              <Text style={styles.orderedLabel}>Sent to Kitchen</Text>
+              {orderedItems.map((item, index) => (
+                <View key={`ordered-${index}`} style={styles.orderedItem}>
+                  <Text style={styles.orderedItemName}>
+                    {item.quantity}x {item.name}
+                  </Text>
+                  <Text style={styles.orderedItemPrice}>
+                    ${item.totalPrice.toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ─── Cart (new items) ─── */}
           <ScrollView style={styles.cartList}>
-            {cart.length === 0 ? (
+            {cart.length === 0 && orderedItems.length === 0 ? (
               <View style={styles.emptyCart}>
                 <Text style={styles.emptyCartTitle}>No items yet</Text>
                 <Text style={styles.emptyCartText}>
                   Tap products from the menu to add them.
                 </Text>
               </View>
+            ) : cart.length === 0 && orderedItems.length > 0 ? (
+              <View style={styles.emptyCart}>
+                <Text style={styles.emptyCartTitle}>All items sent</Text>
+                <Text style={styles.emptyCartText}>
+                  Tap products to add more items to this order.
+                </Text>
+              </View>
             ) : (
               cart.map((item, index) => (
                 <TouchableOpacity
-                  key={`${item.productId}-${index}`}
+                  key={`cart-${item.productId}-${index}`}
                   style={styles.cartItem}
                   onLongPress={() => openEditCartItem(index)}
                 >
@@ -507,11 +523,9 @@ export default function OrderScreen({ navigation }: any) {
                       </TouchableOpacity>
                     </View>
                   </View>
-
                   {item.course ? (
                     <Text style={styles.cartCourse}>{item.course}</Text>
                   ) : null}
-
                   {item.modifiers.map((modifier) => (
                     <Text
                       key={modifier.modifierOptionId}
@@ -546,31 +560,31 @@ export default function OrderScreen({ navigation }: any) {
               <Text style={styles.totalLabel}>Subtotal</Text>
               <Text style={styles.totalValue}>${subtotal.toFixed(2)}</Text>
             </View>
-
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Tax</Text>
               <Text style={styles.totalValue}>${tax.toFixed(2)}</Text>
             </View>
-
             <View style={styles.grandTotalRow}>
               <Text style={styles.grandTotalLabel}>Total</Text>
               <Text style={styles.grandTotalValue}>${total.toFixed(2)}</Text>
             </View>
-
             <TouchableOpacity
               style={styles.sendButton}
               onPress={sendToKitchen}
-              disabled={submitting}
+              disabled={submitting || cart.length === 0}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.sendButtonText}>Send to Kitchen</Text>
+                <Text style={styles.sendButtonText}>
+                  Send to Kitchen {cart.length > 0 ? `(${cart.length})` : ""}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Right Panel: Menu */}
         <View style={styles.rightPanel}>
           <Text style={styles.panelTitle}>Menu</Text>
 
@@ -622,7 +636,6 @@ export default function OrderScreen({ navigation }: any) {
                 All
               </Text>
             </TouchableOpacity>
-
             {categories.map((category) => (
               <TouchableOpacity
                 key={category.id}
@@ -659,7 +672,6 @@ export default function OrderScreen({ navigation }: any) {
                 <View style={styles.productImagePlaceholder}>
                   <Text style={styles.productEmoji}>☕</Text>
                 </View>
-
                 <Text style={styles.productName}>{item.name}</Text>
                 <Text style={styles.productPrice}>
                   ${Number(item.price).toFixed(2)}
@@ -679,7 +691,6 @@ export default function OrderScreen({ navigation }: any) {
             <Text style={styles.modalPrice}>
               ${selectedProductTotal.toFixed(2)}
             </Text>
-
             <ScrollView style={styles.modifierList}>
               {productGroups.map((group) => (
                 <View key={group.id} style={styles.modifierGroup}>
@@ -687,13 +698,11 @@ export default function OrderScreen({ navigation }: any) {
                     {group.name}
                     {group.isRequired ? " *" : ""}
                   </Text>
-
                   {group.options.map((option) => {
                     const selected =
                       selectedModifiers[group.id]?.some(
                         (x) => x.id === option.id
                       ) ?? false;
-
                     return (
                       <TouchableOpacity
                         key={option.id}
@@ -713,7 +722,6 @@ export default function OrderScreen({ navigation }: any) {
                             : "☐"}{" "}
                           {option.name}
                         </Text>
-
                         <Text style={styles.modifierOptionPrice}>
                           +${Number(option.priceDelta || 0).toFixed(2)}
                         </Text>
@@ -723,7 +731,6 @@ export default function OrderScreen({ navigation }: any) {
                 </View>
               ))}
             </ScrollView>
-
             <View style={styles.quantityRow}>
               <TouchableOpacity
                 style={styles.qtyButton}
@@ -731,9 +738,7 @@ export default function OrderScreen({ navigation }: any) {
               >
                 <Text style={styles.qtyText}>−</Text>
               </TouchableOpacity>
-
               <Text style={styles.qtyNumber}>{quantity}</Text>
-
               <TouchableOpacity
                 style={styles.qtyButton}
                 onPress={() => setQuantity((q) => q + 1)}
@@ -741,7 +746,6 @@ export default function OrderScreen({ navigation }: any) {
                 <Text style={styles.qtyText}>+</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -749,7 +753,6 @@ export default function OrderScreen({ navigation }: any) {
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={addSelectedProductToCart}
@@ -835,7 +838,7 @@ const styles = StyleSheet.create({
   quickModifiersScroll: {
     flexDirection: "row",
   },
-  quickModifierButton: {
+  quickModifierChip: {
     backgroundColor: "#F8FAFC",
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -843,29 +846,18 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    minWidth: 80,
-    alignItems: "center",
   },
-  quickModifierButtonSelected: {
+  quickModifierChipActive: {
     backgroundColor: "#FEF3C7",
     borderColor: "#F59E0B",
   },
-  quickModifierButtonText: {
+  quickModifierText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#475569",
   },
-  quickModifierButtonTextSelected: {
+  quickModifierTextActive: {
     color: "#92400E",
-  },
-  quickModifierButtonPrice: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#64748B",
-    marginTop: 2,
-  },
-  quickModifierButtonPriceSelected: {
-    color: "#B45309",
   },
   orderTypeRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   orderTypeButton: {
@@ -910,17 +902,32 @@ const styles = StyleSheet.create({
   courseButtonTextActive: {
     color: "#FFFFFF",
   },
-  quickModifiersSection: {
-    marginBottom: 16,
+  orderedSection: {
+    marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
   },
-  quickModifiersTitle: {
+  orderedLabel: {
     fontSize: 14,
-    fontWeight: "900",
-    color: "#0F172A",
-    marginBottom: 8,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 6,
+  },
+  orderedItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  orderedItemName: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: "600",
+  },
+  orderedItemPrice: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: "700",
   },
   cartList: { flex: 1 },
   emptyCart: {

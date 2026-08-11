@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -28,9 +28,14 @@ interface PaymentScreenProps {
 }
 
 export default function PaymentScreen({ navigation, route }: PaymentScreenProps) {
-  const order = route.params?.order;
+  // Accept both 'order' (full) and 'orderId' (to fetch)
+  const orderFromRoute = route.params?.order;
+  const orderIdFromRoute = route.params?.orderId;
   const orderData = route.params?.orderData;
   const split = route.params?.split;
+
+  const [fetchedOrder, setFetchedOrder] = useState<any>(null);
+  const [loadingOrder, setLoadingOrder] = useState(false);
 
   const { activeTableOrder, clearActiveTableOrder } = useActiveOrderStore();
   const tableName = activeTableOrder.tableName;
@@ -48,26 +53,50 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
   const [giftCardBalance, setGiftCardBalance] = useState<number | null>(null);
   const [giftCardLoading, setGiftCardLoading] = useState(false);
 
+  // Use fetched order if available, otherwise the passed order
+  const currentOrder = fetchedOrder || orderFromRoute;
+
+  // Fetch order by ID if only orderId is provided
+  useEffect(() => {
+    if (orderIdFromRoute && !orderFromRoute) {
+      fetchOrderById(orderIdFromRoute);
+    }
+  }, [orderIdFromRoute, orderFromRoute]);
+
+  const fetchOrderById = async (id: string) => {
+    setLoadingOrder(true);
+    try {
+      const res = await api.get(`/orders/${id}`);
+      setFetchedOrder(res.data);
+    } catch (error: any) {
+      Alert.alert("Error", "Could not load order details.");
+      navigation.goBack();
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
+
+  // Compute subtotal, tax, total from currentOrder
   const subtotal = useMemo(() => {
     if (split) return Number(split.subtotal || 0);
     return Number(
-      order?.subtotal ?? orderData?.subtotal ?? 0
+      currentOrder?.subtotal ?? orderData?.subtotal ?? 0
     );
-  }, [order, orderData, split]);
+  }, [currentOrder, orderData, split]);
 
   const tax = useMemo(() => {
     if (split) return Number(split.tax || 0);
     return Number(
-      order?.taxAmount ?? orderData?.taxAmount ?? subtotal * 0.1
+      currentOrder?.taxAmount ?? orderData?.taxAmount ?? subtotal * 0.1
     );
-  }, [order, orderData, split, subtotal]);
+  }, [currentOrder, orderData, split, subtotal]);
 
   const total = useMemo(() => {
     if (split) return Number(split.total || 0);
     return Number(
-      order?.totalAmount ?? orderData?.totalAmount ?? subtotal + tax
+      currentOrder?.totalAmount ?? orderData?.totalAmount ?? subtotal + tax
     );
-  }, [order, orderData, split, subtotal, tax]);
+  }, [currentOrder, orderData, split, subtotal, tax]);
 
   const tipValue = useMemo(() => {
     const tip = parseFloat(tipAmount) || 0;
@@ -79,7 +108,7 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
   }, [total, tipValue]);
 
   const items: PaymentItem[] = useMemo(() => {
-    const source = split?.items ?? orderData?.items ?? order?.items ?? [];
+    const source = split?.items ?? orderData?.items ?? currentOrder?.items ?? [];
     return source.map((item: any) => {
       const quantity = Number(item.quantity || 1);
       const unitPrice = Number(
@@ -99,7 +128,7 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
           : undefined,
       };
     });
-  }, [order, orderData, split]);
+  }, [currentOrder, orderData, split]);
 
   const change = useMemo(() => {
     const value = parseFloat(tendered || "0");
@@ -107,8 +136,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
   }, [tendered, finalTotal, selectedMethod]);
 
   const displayName = split?.name
-    ? `${split.name} · #${orderNumber ?? order?.orderNumber ?? "N/A"}`
-    : tableName || order?.table?.name || "Payment";
+    ? `${split.name} · #${orderNumber ?? currentOrder?.orderNumber ?? "N/A"}`
+    : tableName || currentOrder?.table?.name || "Payment";
 
   const handlePay = async () => {
     if (!selectedMethod) {
@@ -138,16 +167,32 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
     setLoading(true);
 
     try {
-      const orderId = order?.id;
+      const orderId = currentOrder?.id;
 
       if (orderId && isOnline()) {
-        await api.post(`/orders/${orderId}/pay`, {
-          paymentMethod: selectedMethod,
-          amountTendered: selectedMethod === "CASH" ? parseFloat(tendered) : undefined,
-          tipAmount: tipValue > 0 ? tipValue : undefined,
-          giftCardNumber: selectedMethod === "GIFT_CARD" ? giftCardNumber : undefined,
-          giftCardAmount: selectedMethod === "GIFT_CARD" ? finalTotal : undefined,
-        });
+        if (split) {
+          await api.post(`/orders/${orderId}/pay-split`, {
+            splits: [{
+              amount: finalTotal,
+              paymentMethod: selectedMethod,
+              tipAmount: tipValue > 0 ? tipValue : undefined,
+              cashTendered: selectedMethod === "CASH" ? parseFloat(tendered) : undefined,
+              giftCardId: selectedMethod === "GIFT_CARD" ? giftCardNumber : undefined,
+            }]
+          });
+        } else {
+          const paymentData: any = {
+            paymentMethod: selectedMethod,
+            tipAmount: tipValue > 0 ? tipValue : undefined,
+          };
+          if (selectedMethod === "CASH") {
+            paymentData.cashTendered = parseFloat(tendered);
+          }
+          if (selectedMethod === "GIFT_CARD") {
+            paymentData.giftCardId = giftCardNumber;
+          }
+          await api.post(`/orders/${orderId}/pay`, paymentData);
+        }
       }
 
       const receiptNumber = `RCP-${Date.now()}`;
@@ -156,8 +201,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         id: receiptNumber,
         createdAt: now,
         orderId: orderId || null,
-        orderNumber: orderNumber ?? order?.orderNumber ?? null,
-        tableName: tableName || order?.table?.name || null,
+        orderNumber: orderNumber ?? currentOrder?.orderNumber ?? null,
+        tableName: tableName || currentOrder?.table?.name || null,
         splitName: split?.name || null,
         items,
         subtotal,
@@ -207,17 +252,16 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
   const handlePrint = async () => {
     if (!receiptPayment) return;
-
     try {
       const receiptData: ReceiptData = {
-        restaurantName: "Restaurant POS", // TODO: Get from settings
-        restaurantAddress: "123 Main St", // TODO: Get from settings
-        restaurantPhone: "(555) 123-4567", // TODO: Get from settings
+        restaurantName: "Restaurant POS",
+        restaurantAddress: "123 Main St",
+        restaurantPhone: "(555) 123-4567",
         orderNumber: receiptPayment.orderNumber || 0,
         tableName: receiptPayment.tableName || undefined,
         orderType: receiptPayment.tableName ? 'DINE_IN' : 'TAKEOUT',
         date: new Date(receiptPayment.createdAt).toLocaleString(),
-        serverName: "Server", // TODO: Get from auth store
+        serverName: "Server",
         items: receiptPayment.items.map(item => ({
           name: item.name,
           quantity: item.quantity,
@@ -233,9 +277,7 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
         tendered: receiptPayment.amountTendered || undefined,
         change: receiptPayment.change || undefined,
       };
-
       const success = await printerService.printReceipt(receiptData);
-      
       if (success) {
         Alert.alert("Print Success", "Receipt sent to printer successfully.");
       } else {
@@ -254,6 +296,17 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
     { key: "MIXED", label: "Mixed", icon: "🔀" },
   ];
 
+  if (loadingOrder) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.loadingText}>Loading order...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -264,8 +317,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
           <Text style={styles.title}>{split ? split.name : "Payment"}</Text>
           <Text style={styles.headerSub}>
             {displayName}
-            {orderNumber != null || order?.orderNumber != null
-              ? ` · #${orderNumber ?? order?.orderNumber}`
+            {orderNumber != null || currentOrder?.orderNumber != null
+              ? ` · #${orderNumber ?? currentOrder?.orderNumber}`
               : ""}
           </Text>
         </View>
@@ -402,9 +455,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
                 }
                 setGiftCardLoading(true);
                 try {
-                  // Mock API call - replace with actual API
                   await new Promise(resolve => setTimeout(resolve, 1000));
-                  setGiftCardBalance(50); // Mock balance
+                  setGiftCardBalance(50);
                 } catch (error) {
                   Alert.alert("Error", "Failed to check gift card balance");
                   setGiftCardBalance(null);
@@ -434,10 +486,10 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
           </View>
         )}
 
-        {!split && order && (
+        {!split && currentOrder && (
           <TouchableOpacity
             style={styles.splitBtn}
-            onPress={() => navigation.navigate("Split", { order, orderData })}
+            onPress={() => navigation.navigate("Split", { order: currentOrder, orderData })}
           >
             <Text style={styles.splitBtnText}>Split Bill</Text>
           </TouchableOpacity>
@@ -476,6 +528,8 @@ export default function PaymentScreen({ navigation, route }: PaymentScreenProps)
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 12, color: COLORS.muted },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -623,12 +677,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     marginTop: 8,
-  },
-  changeText: {
-    color: COLORS.success,
-    fontWeight: "700",
-    fontSize: 15,
-    marginTop: 10,
   },
   splitBtn: {
     backgroundColor: COLORS.surface,
