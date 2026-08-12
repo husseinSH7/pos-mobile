@@ -42,7 +42,6 @@ export default function SplitScreen({ navigation, route }: any) {
   }, [orderDetails]);
 
   useEffect(() => {
-    // If order is not passed, fetch by ID from route
     if (!order && route.params?.orderId) {
       fetchOrder(route.params.orderId);
     }
@@ -95,7 +94,6 @@ export default function SplitScreen({ navigation, route }: any) {
   };
 
   const handlePay = async () => {
-    // Validate all participants have payment method and amounts > 0
     const totalSplit = participants.reduce((sum, p) => sum + p.amount, 0);
     if (Math.abs(totalSplit - totalAmount) > 0.01) {
       Alert.alert("Split mismatch", `Total split (${formatCurrency(totalSplit)}) does not equal order total (${formatCurrency(totalAmount)}).`);
@@ -110,15 +108,17 @@ export default function SplitScreen({ navigation, route }: any) {
     setLoading(true);
     try {
       const orderId = orderDetails.id;
-      // First create splits
-      const splits = participants.map((p) => ({
-        name: p.name,
-        amount: p.amount,
-        splitType: "CUSTOM",
-      }));
-      await api.post(`/orders/${orderId}/split`, { splits });
 
-      // Then pay with splits
+      // ✅ FIXED: create splits one by one using /splits (plural)
+      for (const p of participants) {
+        await api.post(`/orders/${orderId}/splits`, {
+          name: p.name,
+          amount: p.amount,
+          splitType: "CUSTOM",
+        });
+      }
+
+      // Pay with splits (backend expects array)
       const paymentSplits = participants.map((p) => ({
         amount: p.amount,
         paymentMethod: p.paymentMethod,
@@ -130,6 +130,7 @@ export default function SplitScreen({ navigation, route }: any) {
       Alert.alert("Success", "Split payment completed.");
       navigation.navigate("Tables");
     } catch (error: any) {
+      console.error("Split error:", error);
       Alert.alert("Error", error?.response?.data?.message || "Split payment failed.");
     } finally {
       setLoading(false);
