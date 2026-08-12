@@ -18,8 +18,6 @@ import { useAuthStore } from "../store/authStore";
 import { useSyncStore } from "../store/syncStore";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
-import { saveOfflineOrder, getOfflineCategories, getOfflineProducts } from "../services/database";
-import { isOnline } from "../services/network";
 
 type ModifierOption = {
   id: string;
@@ -99,12 +97,29 @@ export default function OrderScreen({ navigation }: any) {
   const [orderNotes, setOrderNotes] = useState("");
   const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
 
-  // Load menu
+  // ─── Load Menu ──────────────────────────────────────────────
+  const loadMenu = async () => {
+    try {
+      setError(null);
+      const [catRes, prodRes] = await Promise.all([
+        api.get("/menu/categories"),
+        api.get("/menu/products?includeModifiers=true"),
+      ]);
+      setCategories(catRes.data);
+      setProducts(prodRes.data);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || "Failed to load menu.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadMenu();
   }, []);
 
-  // Load existing order items into orderedItems (not cart)
+  // ─── Load existing order items ──────────────────────────────
   useEffect(() => {
     const loadExistingOrder = async () => {
       if (activeTable.orderId) {
@@ -137,42 +152,12 @@ export default function OrderScreen({ navigation }: any) {
     }
   }, [activeTable.orderId, loading]);
 
-  const loadMenu = async () => {
-    try {
-      setError(null);
-      if (isOnline()) {
-        const [catRes, prodRes] = await Promise.all([
-          api.get("/menu/categories"),
-          api.get("/menu/products?includeModifiers=true"),
-        ]);
-        setCategories(catRes.data);
-        setProducts(prodRes.data);
-      } else {
-        if (user) {
-          const [offlineCats, offlineProds] = await Promise.all([
-            getOfflineCategories(user.restaurantId),
-            getOfflineProducts(user.restaurantId),
-          ]);
-          setCategories(offlineCats);
-          setProducts(offlineProds);
-        } else {
-          throw new Error("User not authenticated for offline access");
-        }
-      }
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || "Failed to load menu.";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ─── Compute totals ────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     if (selectedCategoryId === "ALL") return products;
     return products.filter((p) => p.categoryId === selectedCategoryId);
   }, [products, selectedCategoryId]);
 
-  // Subtotal = ordered + cart
   const orderedSubtotal = orderedItems.reduce((sum, item) => sum + item.totalPrice, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
   const subtotal = orderedSubtotal + cartSubtotal;
@@ -213,6 +198,7 @@ export default function OrderScreen({ navigation }: any) {
     return (base + modifiersTotal + quickModifiersTotal) * quantity;
   }, [selectedProduct, selectedModifiers, quickModifiers, quantity]);
 
+  // ─── Modal handlers ────────────────────────────────────────────
   const openProductModal = (product: Product) => {
     setSelectedProduct(product);
     setSelectedModifiers({});
@@ -331,6 +317,7 @@ export default function OrderScreen({ navigation }: any) {
     setCart((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // ─── Send to Kitchen ─────────────────────────────────────────
   const sendToKitchen = async () => {
     if (cart.length === 0) {
       Alert.alert("Empty order", "Add at least one item first.");
@@ -356,10 +343,8 @@ export default function OrderScreen({ navigation }: any) {
       let orderNumber = activeTable.orderNumber;
 
       if (orderId) {
-        // Append new items to existing order (PUT)
         await api.put(`/orders/${orderId}/items`, { items: newItems });
       } else {
-        // Create new order
         const payload = {
           tableId: activeTable.tableId || undefined,
           orderType,
@@ -376,7 +361,7 @@ export default function OrderScreen({ navigation }: any) {
         });
       }
 
-      // Clear only the cart (new items), keep orderedItems as read‑only
+      // Clear cart after sending to kitchen
       setCart([]);
       setOrderNotes("");
       navigation.navigate("Tables");

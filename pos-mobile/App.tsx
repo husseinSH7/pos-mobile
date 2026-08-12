@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuthStore } from "./src/store/authStore";
+import { getDatabase } from "./src/services/database";
+import { initializeNetworkMonitoring } from "./src/services/network";
 
 import LoginScreen from "./src/screens/LoginScreen";
 import HomeScreen from "./src/screens/HomeScreen";
@@ -22,6 +24,18 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  useEffect(() => {
+    const init = async () => {
+      // Restore auth (tokens & user)
+      await useAuthStore.getState().initializeAuth();
+      // Initialise offline DB (optional – keep it)
+      await getDatabase().catch(console.error);
+      // Network monitoring (optional – keep it)
+      await initializeNetworkMonitoring().catch(console.error);
+    };
+    init();
+  }, []);
 
   return (
     <NavigationContainer>

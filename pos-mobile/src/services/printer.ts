@@ -1,8 +1,4 @@
 import { Platform } from 'react-native';
-
-// Printer service for thermal receipt printing
-// This is a placeholder implementation - actual implementation depends on the printer library
-
 export interface ReceiptItem {
   name: string;
   quantity: number;

@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 
 export interface NetworkState {
   isConnected: boolean;
@@ -14,44 +15,20 @@ let currentNetworkState: NetworkState = {
 
 const networkListeners: Set<(state: NetworkState) => void> = new Set();
 
-export async function initializeNetworkMonitoring(): Promise<void> {
-  const state = await NetInfo.fetch();
-  currentNetworkState = {
-    isConnected: state.isConnected ?? false,
-    isInternetReachable: state.isInternetReachable ?? false,
-    type: state.type ?? 'unknown'
-  };
-
-  // Subscribe to network changes
-  NetInfo.addEventListener((networkState) => {
-    const newState: NetworkState = {
-      isConnected: networkState.isConnected ?? false,
-      isInternetReachable: networkState.isInternetReachable ?? false,
-      type: networkState.type ?? 'unknown'
-    };
-
-    if (newState.isConnected !== currentNetworkState.isConnected ||
-        newState.isInternetReachable !== currentNetworkState.isInternetReachable) {
-      currentNetworkState = newState;
-      notifyListeners();
-    }
-  });
+export function isOnline(): boolean {
+  if (Platform.OS === 'web') {
+    return navigator.onLine;
+  }
+  return currentNetworkState.isConnected && currentNetworkState.isInternetReachable;
 }
 
 export function getCurrentNetworkState(): NetworkState {
   return { ...currentNetworkState };
 }
 
-export function isOnline(): boolean {
-  return currentNetworkState.isConnected && currentNetworkState.isInternetReachable;
-}
-
 export function addNetworkListener(listener: (state: NetworkState) => void): () => void {
   networkListeners.add(listener);
-  // Immediately call with current state
   listener(getCurrentNetworkState());
-  
-  // Return unsubscribe function
   return () => {
     networkListeners.delete(listener);
   };
@@ -67,8 +44,50 @@ function notifyListeners(): void {
   });
 }
 
+export async function initializeNetworkMonitoring(): Promise<void> {
+  if (Platform.OS === 'web') {
+    const updateState = () => {
+      const online = navigator.onLine;
+      const newState: NetworkState = {
+        isConnected: online,
+        isInternetReachable: online,
+        type: online ? 'wifi' : 'none'
+      };
+      currentNetworkState = newState;
+      notifyListeners();
+    };
+    window.addEventListener('online', updateState);
+    window.addEventListener('offline', updateState);
+    updateState();
+    return;
+  }
+
+  const state = await NetInfo.fetch();
+  currentNetworkState = {
+    isConnected: state.isConnected ?? false,
+    isInternetReachable: state.isInternetReachable ?? false,
+    type: state.type ?? 'unknown'
+  };
+
+  NetInfo.addEventListener((networkState) => {
+    const newState = {
+      isConnected: networkState.isConnected ?? false,
+      isInternetReachable: networkState.isInternetReachable ?? false,
+      type: networkState.type ?? 'unknown'
+    };
+    if (newState.isConnected !== currentNetworkState.isConnected ||
+        newState.isInternetReachable !== currentNetworkState.isInternetReachable) {
+      currentNetworkState = newState;
+      notifyListeners();
+    }
+  });
+}
+
 export async function checkConnectivity(): Promise<boolean> {
   try {
+    if (Platform.OS === 'web') {
+      return navigator.onLine;
+    }
     const state = await NetInfo.fetch();
     currentNetworkState = {
       isConnected: state.isConnected ?? false,

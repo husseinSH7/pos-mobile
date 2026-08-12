@@ -95,17 +95,17 @@ export default function TablesScreen({ navigation }: any) {
   const getTableStatusColor = (status?: string) => {
     switch (status) {
       case "AVAILABLE":
-        return "#DCFCE7"; // Green
+        return "#DCFCE7";
       case "OCCUPIED":
-        return "#DBEAFE"; // Blue
+        return "#DBEAFE";
       case "PAID":
-        return "#FEF3C7"; // Yellow
+        return "#FEF3C7";
       case "RESERVED":
-        return "#E0E7FF"; // Indigo
+        return "#E0E7FF";
       case "NEEDS_ATTENTION":
-        return "#FEE2E2"; // Red
+        return "#FEE2E2";
       case "DISABLED":
-        return "#F1F5F9"; // Gray
+        return "#F1F5F9";
       default:
         return "#DCFCE7";
     }
@@ -155,8 +155,7 @@ export default function TablesScreen({ navigation }: any) {
       const res = await api.get("/tables");
       setTables(res.data);
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message || "Failed to load tables.";
+      const message = error?.response?.data?.message || "Failed to load tables.";
       setError(message);
     } finally {
       setLoading(false);
@@ -195,7 +194,6 @@ export default function TablesScreen({ navigation }: any) {
     const unique = Array.from(
       new Set(visibleTables.map((table) => getTableAreaName(table)))
     );
-
     return ["All", ...unique];
   }, [visibleTables]);
 
@@ -244,11 +242,8 @@ export default function TablesScreen({ navigation }: any) {
         seats: tempTable.seats,
         area: tempTable.area,
       });
-
-      // Replace temp table with real data
       setTables((prev) => prev.map((t) => t.id === tempTable.id ? res.data : t));
     } catch (error: any) {
-      // Rollback on error
       setTables((prev) => prev.filter((t) => t.id !== tempTable.id));
       const message = error?.response?.data?.message || "Failed to create table.";
       Alert.alert("Error", message);
@@ -267,11 +262,9 @@ export default function TablesScreen({ navigation }: any) {
         orderId: table.openOrderId ?? null,
         orderNumber: null,
       });
-
       navigation.navigate("Order");
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message || "Could not open table.";
+      const message = error?.response?.data?.message || "Could not open table.";
       Alert.alert("Error", message);
     } finally {
       setLoadingTableId(null);
@@ -557,7 +550,6 @@ export default function TablesScreen({ navigation }: any) {
           }
         />
       ) : (
-        // ✅ FIXED: removed onTransfer and onOpenTransferModal props
         <FloorPlanView
           tables={filteredTables}
           onTablePress={handleTablePress}
@@ -1114,12 +1106,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-  },
-  statusPillAvailable: {
-    backgroundColor: "#DCFCE7",
-  },
-  statusPillOccupied: {
-    backgroundColor: "#FEE2E2",
   },
   statusPillText: {
     fontSize: 11,

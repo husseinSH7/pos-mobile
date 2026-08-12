@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import { setAuthToken } from "../services/api";
-import { initializeWebSocket, disconnectWebSocket } from "../services/websocket";
-import { useRealtimeStore } from "./realtimeStore";
-import { initializeNetworkMonitoring } from "../services/network";
-import { secureStorage } from "../services/secureStorage";
-import { registerForPushNotificationsAsync } from "../services/notifications";
+import {
+  getTokens,
+  saveTokens,
+  clearTokens,
+  saveUser,
+  getUser,
+  clearUser,
+} from "../services/secureStorage";
 
 export interface User {
   id: string;
@@ -23,49 +26,20 @@ interface AuthState {
   initializeAuth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
   refreshToken: null,
   isAuthenticated: false,
 
   login: async (user, token, refreshToken) => {
-    // Set the auth token for API requests immediately
     setAuthToken(token);
-
-    // Side effects – web/native differences are caught here to avoid blocking login
     try {
-      await secureStorage.saveTokens(token, refreshToken || '');
-      await secureStorage.saveUser(user);
-      await secureStorage.saveRestaurantId(user.restaurantId);
+      await saveTokens(token, refreshToken || '');
+      await saveUser(user);
     } catch (error) {
-      console.warn("secureStorage failed (likely web):", error);
+      console.warn("Failed to save tokens/user:", error);
     }
-
-    try {
-      const pushToken = await registerForPushNotificationsAsync();
-      if (pushToken) {
-        console.log("Push token registered:", pushToken);
-        // TODO: Send push token to backend
-      }
-    } catch (error) {
-      console.warn("Push notifications failed:", error);
-    }
-
-    try {
-      initializeWebSocket(token);
-      useRealtimeStore.getState().connect();
-    } catch (error) {
-      console.warn("WebSocket initialization failed:", error);
-    }
-
-    try {
-      initializeNetworkMonitoring();
-    } catch (error) {
-      console.warn("Network monitoring failed:", error);
-    }
-
-    // Always update state – this is what triggers navigation to home
     set({
       user,
       token,
@@ -76,20 +50,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     setAuthToken(null);
-
     try {
-      await secureStorage.clearAll();
+      await clearTokens();
+      await clearUser();
     } catch (error) {
-      console.warn("clearAll failed:", error);
+      console.warn("Failed to clear tokens/user:", error);
     }
-
-    try {
-      disconnectWebSocket();
-      useRealtimeStore.getState().disconnect();
-    } catch (error) {
-      console.warn("disconnect failed:", error);
-    }
-
     set({
       user: null,
       token: null,
@@ -100,31 +66,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initializeAuth: async () => {
     try {
-      const token = await secureStorage.getAccessToken();
-      const refreshToken = await secureStorage.getRefreshToken();
-      const user = await secureStorage.getUser();
-
-      if (token && user) {
-        setAuthToken(token);
-
-        try {
-          const pushToken = await registerForPushNotificationsAsync();
-          if (pushToken) console.log("Push token registered:", pushToken);
-        } catch (e) { console.warn(e); }
-
-        try {
-          initializeWebSocket(token);
-          useRealtimeStore.getState().connect();
-        } catch (e) { console.warn(e); }
-
-        try {
-          initializeNetworkMonitoring();
-        } catch (e) { console.warn(e); }
-
+      const { accessToken, refreshToken } = await getTokens();
+      const user = await getUser();
+      if (accessToken && user) {
+        setAuthToken(accessToken);
         set({
           user,
-          token,
-          refreshToken,
+          token: accessToken,
+          refreshToken: refreshToken || null,
           isAuthenticated: true,
         });
       }

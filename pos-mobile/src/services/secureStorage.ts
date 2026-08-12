@@ -1,114 +1,105 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
-const USER_KEY = 'user_data';
-const RESTAURANT_ID_KEY = 'restaurant_id';
-const PIN_KEY = 'user_pin';
+const ACCESS_TOKEN_KEY = 'accessToken';
+const REFRESH_TOKEN_KEY = 'refreshToken';
+const USER_KEY = 'user';
 
-export const secureStorage = {
-  async saveTokens(accessToken: string, refreshToken: string): Promise<void> {
-    try {
+// ─── Tokens ──────────────────────────────────────────────────────
+
+export async function saveTokens(accessToken: string, refreshToken: string): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      await AsyncStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      await AsyncStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    } else {
       await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
-    } catch (error) {
-      console.error('Error saving tokens:', error);
-      throw error;
     }
-  },
+  } catch (error) {
+    console.error('Error saving tokens:', error);
+  }
+}
 
-  async getAccessToken(): Promise<string | null> {
-    try {
-      return await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
-    } catch (error) {
-      console.error('Error getting access token:', error);
-      return null;
+export async function getTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }> {
+  try {
+    if (Platform.OS === 'web') {
+      const accessToken = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+      const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+      return { accessToken, refreshToken };
+    } else {
+      const [accessToken, refreshToken] = await Promise.all([
+        SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
+        SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
+      ]);
+      return { accessToken, refreshToken };
     }
-  },
+  } catch (error) {
+    console.error('Error getting tokens:', error);
+    return { accessToken: null, refreshToken: null };
+  }
+}
 
-  async getRefreshToken(): Promise<string | null> {
-    try {
-      return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    } catch (error) {
-      console.error('Error getting refresh token:', error);
-      return null;
-    }
-  },
-
-  async saveUser(user: any): Promise<void> {
-    try {
-      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
-    } catch (error) {
-      console.error('Error saving user:', error);
-      throw error;
-    }
-  },
-
-  async getUser(): Promise<any | null> {
-    try {
-      const userStr = await SecureStore.getItemAsync(USER_KEY);
-      return userStr ? JSON.parse(userStr) : null;
-    } catch (error) {
-      console.error('Error getting user:', error);
-      return null;
-    }
-  },
-
-  async saveRestaurantId(restaurantId: string): Promise<void> {
-    try {
-      await SecureStore.setItemAsync(RESTAURANT_ID_KEY, restaurantId);
-    } catch (error) {
-      console.error('Error saving restaurant ID:', error);
-      throw error;
-    }
-  },
-
-  async getRestaurantId(): Promise<string | null> {
-    try {
-      return await SecureStore.getItemAsync(RESTAURANT_ID_KEY);
-    } catch (error) {
-      console.error('Error getting restaurant ID:', error);
-      return null;
-    }
-  },
-
-  async clearAll(): Promise<void> {
-    try {
+export async function clearTokens(): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
+      await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+    } else {
       await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    }
+  } catch (error) {
+    console.error('Error clearing tokens:', error);
+  }
+}
+
+// ─── User ──────────────────────────────────────────────────────
+
+export async function saveUser(user: any): Promise<void> {
+  try {
+    const json = JSON.stringify(user);
+    if (Platform.OS === 'web') {
+      await AsyncStorage.setItem(USER_KEY, json);
+    } else {
+      await SecureStore.setItemAsync(USER_KEY, json);
+    }
+  } catch (error) {
+    console.error('Error saving user:', error);
+  }
+}
+
+export async function getUser(): Promise<any | null> {
+  try {
+    let json: string | null = null;
+    if (Platform.OS === 'web') {
+      json = await AsyncStorage.getItem(USER_KEY);
+    } else {
+      json = await SecureStore.getItemAsync(USER_KEY);
+    }
+    return json ? JSON.parse(json) : null;
+  } catch (error) {
+    console.error('Error getting user:', error);
+    return null;
+  }
+}
+
+export async function clearUser(): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      await AsyncStorage.removeItem(USER_KEY);
+    } else {
       await SecureStore.deleteItemAsync(USER_KEY);
-      await SecureStore.deleteItemAsync(RESTAURANT_ID_KEY);
-      await SecureStore.deleteItemAsync(PIN_KEY);
-    } catch (error) {
-      console.error('Error clearing secure storage:', error);
-      throw error;
     }
-  },
+  } catch (error) {
+    console.error('Error clearing user:', error);
+  }
+}
 
-  async savePIN(pin: string): Promise<void> {
-    try {
-      await SecureStore.setItemAsync(PIN_KEY, pin);
-    } catch (error) {
-      console.error('Error saving PIN:', error);
-      throw error;
-    }
-  },
+// ─── Combined ──────────────────────────────────────────────────
 
-  async getPIN(): Promise<string | null> {
-    try {
-      return await SecureStore.getItemAsync(PIN_KEY);
-    } catch (error) {
-      console.error('Error getting PIN:', error);
-      return null;
-    }
-  },
-
-  async deletePIN(): Promise<void> {
-    try {
-      await SecureStore.deleteItemAsync(PIN_KEY);
-    } catch (error) {
-      console.error('Error deleting PIN:', error);
-      throw error;
-    }
-  },
-};
+export async function clearAll(): Promise<void> {
+  await clearTokens();
+  await clearUser();
+}

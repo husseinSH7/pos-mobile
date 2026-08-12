@@ -12,7 +12,6 @@ import {
   type KitchenTicketEvent,
   type TableStatusEvent,
 } from "../services/websocket";
-import { sendLocalNotification } from "../services/notifications";
 import { useAuthStore } from "./authStore";
 
 interface RealtimeState {
@@ -47,17 +46,6 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
       set((state) => ({
         recentOrders: [data, ...state.recentOrders].slice(0, 50), // Keep last 50
       }));
-      
-      // Send notification for new orders
-      if (user && user.role === 'KITCHEN') {
-        sendLocalNotification({
-          type: 'NEW_ORDER',
-          orderId: data.orderId,
-          restaurantId: user.restaurantId,
-          title: 'New Order Received',
-          body: `Order #${data.orderNumber} ${data.tableId ? `for Table ${data.tableId}` : '(Takeout)'}`,
-        });
-      }
     });
 
     // Subscribe to kitchen ticket events
@@ -73,17 +61,6 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
           ticket.ticketId === data.ticketId ? data : ticket
         ),
       }));
-      
-      // Send notification when kitchen ticket is ready
-      if (data.status === 'READY' && user) {
-        sendLocalNotification({
-          type: 'KITCHEN_READY',
-          orderId: data.orderId,
-          restaurantId: user.restaurantId,
-          title: 'Order Ready',
-          body: `Order #${data.orderNumber} is ready for pickup`,
-        });
-      }
     });
 
     // Subscribe to table status changes
@@ -91,17 +68,6 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
       set((state) => ({
         tableUpdates: [data, ...state.tableUpdates].slice(0, 20), // Keep last 20
       }));
-      
-      // Send notification for table updates
-      if (user && (user.role === 'CASHIER' || user.role === 'MANAGER')) {
-        sendLocalNotification({
-          type: 'TABLE_UPDATE',
-          tableId: data.tableId,
-          restaurantId: user.restaurantId,
-          title: `Table ${data.tableId} Updated`,
-          body: `Status changed to ${data.status}`,
-        });
-      }
     });
   },
 
