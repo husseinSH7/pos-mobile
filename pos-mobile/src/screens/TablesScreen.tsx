@@ -37,7 +37,10 @@ interface Table {
   isActive: boolean;
   status?: "AVAILABLE" | "OCCUPIED" | "PAID" | "RESERVED" | "NEEDS_ATTENTION" | "DISABLED";
   hasOpenOrder?: boolean;
+  hasPaidOrder?: boolean;
   openOrderId?: string | null;
+  paidOrderId?: string | null;
+  currentOrderId?: string | null;
   guestCount?: number;
   serverId?: string | null;
   serverName?: string | null;
@@ -336,6 +339,29 @@ export default function TablesScreen({ navigation }: any) {
     navigation.navigate("Home");
   };
 
+  const handleResetTable = async (table: Table) => {
+    Alert.alert(
+      "Reset Table",
+      `Reset table ${table.name} to available?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.post(`/tables/${table.id}/reset`);
+              fetchTables();
+            } catch (error: any) {
+              const message = error?.response?.data?.message || "Failed to reset table";
+              Alert.alert("Error", message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return <LoadingSpinner message="Loading tables..." />;
   }
@@ -519,7 +545,7 @@ export default function TablesScreen({ navigation }: any) {
                       </Text>
                     </View>
 
-                    {/* Pay button for occupied tables */}
+                    {/* Pay button for occupied tables with open orders */}
                     {isOccupied && item.openOrderId && (
                       <TouchableOpacity
                         style={styles.payButton}
@@ -527,6 +553,24 @@ export default function TablesScreen({ navigation }: any) {
                       >
                         <Text style={styles.payButtonText}>Pay</Text>
                       </TouchableOpacity>
+                    )}
+
+                    {/* View receipt for paid tables */}
+                    {item.status === "PAID" && item.paidOrderId && (
+                      <View style={styles.paidActions}>
+                        <TouchableOpacity
+                          style={[styles.payButton, { backgroundColor: "#D97706", flex: 1 }]}
+                          onPress={() => navigation.navigate("Payment", { orderId: item.paidOrderId })}
+                        >
+                          <Text style={styles.payButtonText}>Receipt</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.payButton, { backgroundColor: "#16A34A", flex: 1 }]}
+                          onPress={() => handleResetTable(item)}
+                        >
+                          <Text style={styles.payButtonText}>Reset</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </>
                 )}
@@ -1147,6 +1191,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
+  },
+  paidActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
   },
   emptyState: {
     flex: 1,
